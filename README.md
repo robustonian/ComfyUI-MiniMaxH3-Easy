@@ -154,7 +154,7 @@ Custom width and height must be multiples of 32.
 
 ### Duration
 
-Duration is set in seconds from **4 to 20**. The requested duration is aligned
+Duration is set in seconds from **4 to 60**. The requested duration is aligned
 to MiniMax H3's frame rules internally.
 
 ### Advanced options
