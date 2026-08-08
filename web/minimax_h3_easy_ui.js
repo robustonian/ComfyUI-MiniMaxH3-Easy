@@ -16,7 +16,7 @@ const REF_IMAGE_1K = "1k";
 const REF_IMAGE_2K = "2k";
 const MAX_MEDIA = 15;
 const MIN_SECONDS = 4;
-const MAX_SECONDS = 20;
+const MAX_SECONDS = 60;
 const PROMPT_HISTORY_LIMIT = 120;
 const PROMPT_UNDO_VERSION = "2026-08-05-editor-undo-shield-v1";
 const CARET_SENTINEL = "\u200B";
@@ -1316,6 +1316,26 @@ function buildRuntimePrompt(node, runtimeLinks) {
     }).join("");
 }
 
+function isSerializedInputLink(value) {
+    if (!Array.isArray(value) || value.length !== 2) return false;
+    const [sourceId, sourceSlot] = value;
+    return (typeof sourceId === "string" || typeof sourceId === "number")
+        && Number.isInteger(Number(sourceSlot));
+}
+
+function isInputConnected(node, promptNode, name) {
+    // graphToPrompt has already resolved ordinary ComfyUI links at this point.
+    // Prefer that serialized result, while also checking the live graph for
+    // frontend versions which defer writing converted-widget links.
+    if (isSerializedInputLink(promptNode?.inputs?.[name])) return true;
+    const input = node?.inputs?.find((slot) => String(slot?.name || "") === name);
+    return input?.link != null;
+}
+
+function setLocalInputUnlessConnected(node, promptNode, name, value) {
+    if (!isInputConnected(node, promptNode, name)) promptNode.inputs[name] = value;
+}
+
 function patchGraphToPrompt() {
     if (patchedPrompt || typeof app.graphToPrompt !== "function") return;
     patchedPrompt = true;
@@ -1341,18 +1361,23 @@ function patchGraphToPrompt() {
                 promptNode.inputs[`media_${index + 1}`] = [String(link.source_id), slot];
                 promptNode.inputs[`media_type_${index + 1}`] = String(link.media_type || "image");
             });
-            promptNode.inputs.prompt = buildRuntimePrompt(node, runtimeLinks);
-            promptNode.inputs.mode = canonicalOption("mode", getWidgetValue(node, "mode", MODE_IMAGE));
-            promptNode.inputs.resolution = canonicalOption("resolution", getWidgetValue(node, "resolution", "480P"));
-            promptNode.inputs.aspect_ratio = canonicalOption("aspect_ratio", getWidgetValue(node, "aspect_ratio", "16:9"));
-            promptNode.inputs.width = Number(getWidgetValue(node, "width", 1344));
-            promptNode.inputs.height = Number(getWidgetValue(node, "height", 768));
-            promptNode.inputs.seconds = Math.min(MAX_SECONDS, Math.max(MIN_SECONDS, Number(getWidgetValue(node, "seconds", 5)) || 5));
-            promptNode.inputs.advanced = asBoolean(getWidgetValue(node, "advanced", false));
-            promptNode.inputs.fps = Number(getWidgetValue(node, "fps", 24));
-            promptNode.inputs.keyframe_role = canonicalOption("keyframe_role", getWidgetValue(node, "keyframe_role", KEYFRAME_FIRST));
-            promptNode.inputs.ref_image_size = canonicalOption("ref_image_size", getWidgetValue(node, "ref_image_size", REF_IMAGE_1K));
-            promptNode.inputs.reference_mention_mode = canonicalOption("reference_mention_mode", getWidgetValue(node, "reference_mention_mode", "index"));
+            const localInputs = {
+                prompt: buildRuntimePrompt(node, runtimeLinks),
+                mode: canonicalOption("mode", getWidgetValue(node, "mode", MODE_IMAGE)),
+                resolution: canonicalOption("resolution", getWidgetValue(node, "resolution", "480P")),
+                aspect_ratio: canonicalOption("aspect_ratio", getWidgetValue(node, "aspect_ratio", "16:9")),
+                width: Number(getWidgetValue(node, "width", 1344)),
+                height: Number(getWidgetValue(node, "height", 768)),
+                seconds: Math.min(MAX_SECONDS, Math.max(MIN_SECONDS, Number(getWidgetValue(node, "seconds", 5)) || 5)),
+                advanced: asBoolean(getWidgetValue(node, "advanced", false)),
+                fps: Number(getWidgetValue(node, "fps", 24)),
+                keyframe_role: canonicalOption("keyframe_role", getWidgetValue(node, "keyframe_role", KEYFRAME_FIRST)),
+                ref_image_size: canonicalOption("ref_image_size", getWidgetValue(node, "ref_image_size", REF_IMAGE_1K)),
+                reference_mention_mode: canonicalOption("reference_mention_mode", getWidgetValue(node, "reference_mention_mode", "index")),
+            };
+            for (const [name, value] of Object.entries(localInputs)) {
+                setLocalInputUnlessConnected(node, promptNode, name, value);
+            }
         }
         return promptData;
     };
