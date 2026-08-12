@@ -1,21 +1,52 @@
 import { app } from "../../scripts/app.js";
+import { api } from "../../scripts/api.js";
 
 const NODE_CLASS = "MiniMaxH3Easy";
 const LOADER_CLASS = "MiniMaxH3EasyLoader";
+const ADAPTER_CLASS = "MiniMaxH3EasyModelAdapter";
 const OUTPUT_CLASS = "MiniMaxH3EasyOutput";
 const LINKS_PROP = "minimax_h3_virtual_media_links";
 const PROMPT_DOC_PROP = "minimax_h3_prompt_reference_doc";
+const PROMPT_VIEW_PROP = "minimax_h3_prompt_view_mode";
+const PROMPT_OPTIMIZER_SETTINGS_ENDPOINT = "/minimax_h3_easy/prompt_optimizer_settings";
+const PROMPT_OPTIMIZER_SETTINGS_DEFAULTS = Object.freeze({
+    api_format: "openai",
+    api_url: "",
+    api_key: "",
+    model: "",
+    read_media: false,
+});
+let promptOptimizerSettingsCache = { ...PROMPT_OPTIMIZER_SETTINGS_DEFAULTS };
+let promptOptimizerSettingsLoaded = false;
+let promptOptimizerSettingsPromise = null;
+let promptOptimizerSettingsModal = null;
 const RUNTIME_REF_PREFIX = "__MINIMAX_H3_REF_";
 const UNRESOLVED_REF_PREFIX = "__MINIMAX_H3_UNRESOLVED_REF_";
 const DIALOGUE_CLASS = "h3-dialogue-block";
+const PROMPT_VIEW_STRUCTURED = "structured";
+const PROMPT_VIEW_RAW = "raw";
+const PROMPT_GUIDES = [
+    { value: "none", zh: "\u4ec5\u901a\u7528\u65b9\u6848", en: "General only" },
+    { value: "3d_animation_short", zh: "3D \u52a8\u753b\u77ed\u7247", en: "3D Animation Short" },
+    { value: "brand_promo", zh: "\u54c1\u724c\u5ba3\u4f20\u7247", en: "Brand Promo Video" },
+    { value: "coop_game_intro", zh: "\u5408\u4f5c\u6e38\u620f\u5f00\u573a", en: "Co-op Game Intro" },
+    { value: "handdrawn_live", zh: "\u624b\u7ed8\u5b9e\u62cd\u878d\u5408", en: "Hand-drawn Live-action" },
+    { value: "minimalist_product_ad", zh: "\u6781\u7b80\u4ea7\u54c1\u5e7f\u544a", en: "Minimalist Product Ad" },
+    { value: "music_video_subtitle", zh: "\u97f3\u4e50\u89c6\u9891\u5b57\u5e55", en: "Music Video Subtitle" },
+    { value: "paper_collage", zh: "\u7eb8\u5f20\u62fc\u8d34\u89e3\u8bf4", en: "Paper Collage Explainer" },
+    { value: "papercraft_stop_motion", zh: "\u7eb8\u827a\u5b9a\u683c\u89e3\u8bf4", en: "Papercraft Stop-motion" },
+];
 const MODE_IMAGE = "image";
 const MODE_REFERENCE = "reference";
 const KEYFRAME_FIRST = "first";
 const RESOLUTION_CUSTOM = "custom";
+const REF_IMAGE_MATCH = "match";
 const REF_IMAGE_1K = "1k";
+const REF_IMAGE_15K = "1.5k";
 const REF_IMAGE_2K = "2k";
+const REF_IMAGE_ORIGINAL = "original";
 const MAX_MEDIA = 15;
-const MIN_SECONDS = 4;
+const MIN_SECONDS = 0.2;
 const MAX_SECONDS = 60;
 const PROMPT_HISTORY_LIMIT = 120;
 const PROMPT_UNDO_VERSION = "2026-08-05-editor-undo-shield-v1";
@@ -32,11 +63,37 @@ const TEXT = {
     loadAudio: ZH_BROWSER ? "\u52a0\u8f7d\u97f3\u9891" : "Load audio",
     deleteLink: ZH_BROWSER ? "\u5220\u9664" : "Delete",
     promptPlaceholder: "Prompt...",
+    rawPromptPlaceholder: ZH_BROWSER ? "\u539f\u59cb\u63d0\u793a\u8bcd..." : "Raw prompt...",
+    showRawPrompt: ZH_BROWSER ? "\u663e\u793a\u539f\u59cb\u63d0\u793a\u8bcd" : "Show raw prompt",
+    showStructuredPrompt: ZH_BROWSER ? "\u8fd4\u56de\u7ed3\u6784\u5316\u7f16\u8f91" : "Back to structured editor",
+    optimizePrompt: ZH_BROWSER ? "\u63d0\u793a\u8bcd\u4f18\u5316" : "Prompt optimization",
+    regeneratePrompt: ZH_BROWSER ? "\u91cd\u65b0\u751f\u6210" : "Regenerate",
+    optimizerSettings: ZH_BROWSER ? "\u63d0\u793a\u8bcd\u4f18\u5316\u8bbe\u7f6e" : "Prompt optimization settings",
+    settingsOpen: ZH_BROWSER ? "\u6253\u5f00\u63d0\u793a\u8bcd\u4f18\u5316 API \u8bbe\u7f6e" : "Open prompt optimization API settings",
+    settingsSave: ZH_BROWSER ? "\u4fdd\u5b58" : "Save",
+    settingsCancel: ZH_BROWSER ? "\u53d6\u6d88" : "Cancel",
+    settingsClose: ZH_BROWSER ? "\u5173\u95ed" : "Close",
+    settingsSaved: ZH_BROWSER ? "\u63d0\u793a\u8bcd\u4f18\u5316 API \u8bbe\u7f6e\u5df2\u4fdd\u5b58" : "Prompt optimization API settings saved",
+    settingsLoadFailed: ZH_BROWSER ? "\u65e0\u6cd5\u8bfb\u53d6\u63d0\u793a\u8bcd\u4f18\u5316 API \u8bbe\u7f6e" : "Unable to load prompt optimization API settings",
+    apiFormat: ZH_BROWSER ? "API \u683c\u5f0f" : "API format",
+    apiUrl: ZH_BROWSER ? "API \u5730\u5740" : "API URL",
+    apiKey: "API Key",
+    apiModel: ZH_BROWSER ? "\u6a21\u578b\u540d" : "Model",
+    promptGuide: ZH_BROWSER ? "\u63d0\u793a\u8bcd\u65b9\u6848" : "Prompt Guide",
+    readMedia: ZH_BROWSER ? "\u8bfb\u53d6\u5df2\u8fde\u63a5\u5a92\u4f53" : "Read connected media",
+    optimizerMissing: ZH_BROWSER ? "\u8bf7\u5148\u6253\u5f00 API \u8bbe\u7f6e\u5e76\u586b\u5199 API \u5730\u5740\u3001API Key \u548c\u6a21\u578b\u540d\u3002" : "Open API settings and enter the API URL, API key, and model first.",
+    optimizerFailed: ZH_BROWSER ? "\u63d0\u793a\u8bcd\u4f18\u5316\u5931\u8d25" : "Prompt optimization failed",
+    optimizerRunning: ZH_BROWSER ? "\u6b63\u5728\u4f18\u5316" : "Optimizing",
+    optimizerCancel: ZH_BROWSER ? "\u4e2d\u65ad\u4f18\u5316" : "Stop optimization",
+    optimizerDone: ZH_BROWSER ? "\u4f18\u5316\u5b8c\u6210" : "Optimization complete",
+    optimizerError: ZH_BROWSER ? "\u4f18\u5316\u5931\u8d25" : "Optimization failed",
+    promptExternalConnected: ZH_BROWSER ? "\u63d0\u793a\u8bcd\u6765\u81ea\u5916\u90e8\u6587\u672c\u8fde\u63a5" : "Prompt supplied by external text input",
     referencePromptPlaceholder: ZH_BROWSER ? "Prompt... \u8f93\u5165 @ \u5f15\u7528\u5df2\u8fde\u63a5\u7d20\u6750" : "Prompt... Type @ to reference connected media",
     mentionTitle: ZH_BROWSER ? "\u5f15\u7528\u7d20\u6750" : "Reference media",
     mentionEmpty: ZH_BROWSER ? "\u5148\u5c06\u7d20\u6750\u8fde\u63a5\u5230\u4e3b\u8282\u70b9" : "Connect media to the main node first",
     mainTitle: "MiniMax H3 Easy",
     loaderTitle: ZH_BROWSER ? "MiniMax H3 Easy \u52a0\u8f7d\u5668" : "MiniMax H3 Easy Loader",
+    adapterTitle: ZH_BROWSER ? "MiniMax H3 Easy \u6a21\u578b\u4e2d\u8f6c" : "MiniMax H3 Easy Model Bridge",
     outputTitle: ZH_BROWSER ? "MiniMax H3 Easy \u8f93\u51fa" : "MiniMax H3 Easy Output",
     category: "MiniMax H3 Easy",
     mode: ZH_BROWSER ? "\u6a21\u5f0f" : "Mode",
@@ -47,6 +104,8 @@ const TEXT = {
     height: ZH_BROWSER ? "\u9ad8\u5ea6" : "Height",
     seconds: ZH_BROWSER ? "\u79d2\u6570" : "Seconds",
     advanced: ZH_BROWSER ? "\u9ad8\u7ea7\u9009\u9879" : "Advanced options",
+    promptOptimizerSettings: ZH_BROWSER ? "\u6253\u5f00\u63d0\u793a\u8bcd\u4f18\u5316 API \u8bbe\u7f6e" : "Optimizer settings",
+    promptOptimizerSceneGuide: ZH_BROWSER ? "\u63d0\u793a\u8bcd\u65b9\u6848" : "Prompt Guide",
     fps: ZH_BROWSER ? "\u5e27\u7387 (FPS)" : "Frame rate (FPS)",
     keyframeRole: ZH_BROWSER ? "\u9996\u5c3e\u5e27\u8bbe\u7f6e" : "First/last frame setup",
     refImageSize: ZH_BROWSER ? "\u53c2\u8003\u56fe\u5c3a\u5bf8" : "Reference size",
@@ -79,12 +138,23 @@ const OPTION_DEFS = {
         last: ZH_BROWSER ? "\u5c3e\u5e27\u4f18\u5148" : "Last frame priority",
     },
     ref_image_size: {
-        [REF_IMAGE_1K]: ZH_BROWSER ? "\u77ed\u8fb9\u6700\u59271K\u50cf\u7d20" : "Max 1K Short Edge",
-        [REF_IMAGE_2K]: ZH_BROWSER ? "\u77ed\u8fb9\u6700\u59272K\u50cf\u7d20" : "Max 2K Short Edge",
+        [REF_IMAGE_MATCH]: ZH_BROWSER ? "\u5339\u914d\u751f\u6210\u5206\u8fa8\u7387" : "Match generation size",
+        [REF_IMAGE_1K]: ZH_BROWSER ? "1K \u9762\u79ef\uff08\u7ea61MP\uff09" : "1K area (~1MP)",
+        [REF_IMAGE_15K]: ZH_BROWSER ? "1.5K \u9762\u79ef\uff08\u7ea62.25MP\uff09" : "1.5K area (~2.25MP)",
+        [REF_IMAGE_2K]: ZH_BROWSER ? "2K \u9762\u79ef\uff08\u7ea64MP\uff09" : "2K area (~4MP)",
+        [REF_IMAGE_ORIGINAL]: ZH_BROWSER ? "\u539f\u56fe\uff08\u4e0d\u7f29\u653e\uff09" : "Original (no scaling)",
     },
     reference_mention_mode: {
         filename: ZH_BROWSER ? "\u6309\u6587\u4ef6\u540d" : "By filename",
         index: ZH_BROWSER ? "\u6309\u5e8f\u53f7" : "By index",
+    },
+    prompt_optimizer_api_format: {
+        openai: ZH_BROWSER ? "OpenAI \u517c\u5bb9" : "OpenAI Compatible",
+        responses: "OpenAI Responses",
+        gemini: ZH_BROWSER ? "Gemini \u539f\u751f" : "Gemini Native",
+    },
+    prompt_optimizer_scene_guide: {
+        none: ZH_BROWSER ? "\u4ec5\u901a\u7528\u65b9\u6848" : "General only",
     },
     resolution: {
         "360P": "360P",
@@ -130,12 +200,25 @@ const OPTION_ALIASES = {
         "Last frame priority": "last",
     },
     ref_image_size: {
+        [REF_IMAGE_MATCH]: REF_IMAGE_MATCH,
+        "\u5339\u914d\u751f\u6210\u5206\u8fa8\u7387": REF_IMAGE_MATCH,
+        "Match generation size": REF_IMAGE_MATCH,
         [REF_IMAGE_1K]: REF_IMAGE_1K,
         "\u77ed\u8fb9\u6700\u59271K\u50cf\u7d20": REF_IMAGE_1K,
         "Max 1K Short Edge": REF_IMAGE_1K,
+        "1K \u9762\u79ef\uff08\u7ea61MP\uff09": REF_IMAGE_1K,
+        "1K area (~1MP)": REF_IMAGE_1K,
+        [REF_IMAGE_15K]: REF_IMAGE_15K,
+        "1.5K \u9762\u79ef\uff08\u7ea62.25MP\uff09": REF_IMAGE_15K,
+        "1.5K area (~2.25MP)": REF_IMAGE_15K,
         [REF_IMAGE_2K]: REF_IMAGE_2K,
         "\u77ed\u8fb9\u6700\u59272K\u50cf\u7d20": REF_IMAGE_2K,
         "Max 2K Short Edge": REF_IMAGE_2K,
+        "2K \u9762\u79ef\uff08\u7ea64MP\uff09": REF_IMAGE_2K,
+        "2K area (~4MP)": REF_IMAGE_2K,
+        [REF_IMAGE_ORIGINAL]: REF_IMAGE_ORIGINAL,
+        "\u539f\u56fe\uff08\u4e0d\u7f29\u653e\uff09": REF_IMAGE_ORIGINAL,
+        "Original (no scaling)": REF_IMAGE_ORIGINAL,
     },
     reference_mention_mode: {
         filename: "filename",
@@ -179,16 +262,35 @@ let releaseCreateMenuLinkHold = null;
 let nativeThemeWatcherInstalled = false;
 let lastVueNodesMode = null;
 
+function nodeMatchesClass(node, className, displayName, installedMarker) {
+    if (!node) return false;
+    if (node.constructor?.prototype?.[installedMarker]) return true;
+    const candidates = [
+        node.comfyClass,
+        node.type,
+        node.constructor?.comfyClass,
+        node.constructor?.type,
+        node.constructor?.nodeData?.name,
+        node.constructor?.nodeData?.display_name,
+        node.title,
+    ];
+    return candidates.some((value) => value != null && [className, displayName].includes(String(value)));
+}
+
 function isTarget(node) {
-    return String(node?.comfyClass || node?.type || node?.constructor?.nodeData?.name || "") === NODE_CLASS;
+    return nodeMatchesClass(node, NODE_CLASS, TEXT.mainTitle, "__h3EasyNodeInstalled");
 }
 
 function isLoader(node) {
-    return String(node?.comfyClass || node?.type || node?.constructor?.nodeData?.name || "") === LOADER_CLASS;
+    return nodeMatchesClass(node, LOADER_CLASS, TEXT.loaderTitle, "__h3EasyLoaderInstalled");
+}
+
+function isAdapter(node) {
+    return nodeMatchesClass(node, ADAPTER_CLASS, TEXT.adapterTitle, "__h3EasyAdapterInstalled");
 }
 
 function isOutput(node) {
-    return String(node?.comfyClass || node?.type || node?.constructor?.nodeData?.name || "") === OUTPUT_CLASS;
+    return nodeMatchesClass(node, OUTPUT_CLASS, TEXT.outputTitle, "__h3EasyOutputInstalled");
 }
 
 function canonicalOption(name, value) {
@@ -204,8 +306,22 @@ function canonicalOption(name, value) {
     return raw;
 }
 
+function canonicalPromptGuide(value) {
+    const raw = String(value ?? "");
+    const found = PROMPT_GUIDES.find((item) => raw === item.value || raw === item.zh || raw === item.en);
+    return found?.value || "none";
+}
+
 function localizeComboWidget(widget) {
     const name = String(widget?.name || "");
+    if (name === "prompt_optimizer_scene_guide") {
+        const current = canonicalPromptGuide(widget?.value);
+        widget.options ||= {};
+        widget.options.values = PROMPT_GUIDES.map((item) => ZH_BROWSER ? item.zh : item.en);
+        widget.value = PROMPT_GUIDES.find((item) => item.value === current)?.[ZH_BROWSER ? "zh" : "en"] || widget.value;
+        widget.__h3PromptGuideLocalized = true;
+        return;
+    }
     const definition = OPTION_DEFS[name];
     if (!widget || !definition) return;
     const current = canonicalOption(name, widget.value);
@@ -246,6 +362,13 @@ function localizeNodeInstance(node) {
         for (const input of node.inputs || []) if (labels[input.name]) setLocalizedSlotLabel(input, labels[input.name]);
         return;
     }
+    if (isAdapter(node)) {
+        node.title = TEXT.adapterTitle;
+        const labels = { fl2va_model: TEXT.fl2vaModel, ref2va_model: TEXT.ref2vaModel, text_encoder: TEXT.textEncoder, video_vae: TEXT.videoVae, audio_vae: TEXT.audioVae };
+        for (const input of node.inputs || []) if (labels[input.name]) setLocalizedSlotLabel(input, labels[input.name]);
+        for (const output of node.outputs || []) if (String(output.name || "").toLowerCase() === "h3_bundle") setLocalizedSlotLabel(output, TEXT.bundle);
+        return;
+    }
     if (isOutput(node)) {
         node.title = TEXT.outputTitle;
         for (const input of node.inputs || []) {
@@ -260,7 +383,7 @@ function localizeNodeInstance(node) {
     }
     if (!isTarget(node)) return;
     node.title = TEXT.mainTitle;
-    const labels = { mode: TEXT.mode, prompt: TEXT.prompt, resolution: TEXT.resolution, aspect_ratio: TEXT.aspectRatio, width: TEXT.width, height: TEXT.height, seconds: TEXT.seconds, advanced: TEXT.advanced, fps: TEXT.fps, keyframe_role: TEXT.keyframeRole, ref_image_size: TEXT.refImageSize, reference_mention_mode: TEXT.referenceMentionMode };
+    const labels = { mode: TEXT.mode, prompt: TEXT.prompt, resolution: TEXT.resolution, aspect_ratio: TEXT.aspectRatio, width: TEXT.width, height: TEXT.height, seconds: TEXT.seconds, advanced: TEXT.advanced, prompt_optimizer_settings: TEXT.promptOptimizerSettings, prompt_optimizer_scene_guide: TEXT.promptOptimizerSceneGuide, fps: TEXT.fps, keyframe_role: TEXT.keyframeRole, ref_image_size: TEXT.refImageSize, reference_mention_mode: TEXT.referenceMentionMode };
     for (const widget of node.widgets || []) {
         if (labels[widget.name]) widget.label = labels[widget.name];
         localizeComboWidget(widget);
@@ -277,10 +400,12 @@ function localizeNodeInstance(node) {
 }
 
 function localizeNodeDefinition(nodeData) {
-    if (!nodeData || ![NODE_CLASS, LOADER_CLASS, OUTPUT_CLASS].includes(nodeData.name)) return;
+    if (!nodeData || ![NODE_CLASS, LOADER_CLASS, ADAPTER_CLASS, OUTPUT_CLASS].includes(nodeData.name)) return;
     nodeData.display_name = nodeData.name === LOADER_CLASS
         ? TEXT.loaderTitle
-        : nodeData.name === OUTPUT_CLASS
+        : nodeData.name === ADAPTER_CLASS
+            ? TEXT.adapterTitle
+            : nodeData.name === OUTPUT_CLASS
             ? TEXT.outputTitle
             : TEXT.mainTitle;
     nodeData.category = TEXT.category;
@@ -580,7 +705,7 @@ function getNativeGraphLink(graph, linkId) {
 function convertNativeMediaConnection(targetNode, inputIndex, linkInfo = null) {
     if (!isTarget(targetNode) || targetNode.__h3VirtualWireClearing) return false;
     const input = targetNode.inputs?.[inputIndex];
-    if (!input || String(input.name || "") !== "media") return false;
+    if (!input || !/^media(?:_\d+)?$/i.test(String(input.name || ""))) return false;
 
     const graph = targetNode.graph || app.graph;
     const linkId = input.link ?? linkInfo?.id ?? linkInfo?.link_id ?? linkInfo?.linkId;
@@ -1279,6 +1404,14 @@ function getInputConnection(canvas) {
     return { targetNode: node };
 }
 
+function promptInputSlot(node) {
+    return (node?.inputs || []).find((input) => String(input?.name || "") === "prompt") || null;
+}
+
+function promptInputIsConnected(node) {
+    return promptInputSlot(node)?.link != null;
+}
+
 function buildRuntimePrompt(node, runtimeLinks) {
     const promptWidget = getWidget(node, "prompt");
     const fallback = String(promptWidget?.value || "");
@@ -1311,7 +1444,7 @@ function buildRuntimePrompt(node, runtimeLinks) {
             );
         }
         if (index >= 0) return `${RUNTIME_REF_PREFIX}${index + 1}__`;
-        if (!isReferenceMode(node)) return String(part.token || "");
+        if (!isReferenceMode(node)) return String(part.tag || part.token || "");
         return `${UNRESOLVED_REF_PREFIX}${mediaType}__`;
     }).join("");
 }
@@ -1361,8 +1494,22 @@ function patchGraphToPrompt() {
                 promptNode.inputs[`media_${index + 1}`] = [String(link.source_id), slot];
                 promptNode.inputs[`media_type_${index + 1}`] = String(link.media_type || "image");
             });
+            const promptInput = promptInputSlot(node);
+            const promptLinkId = promptInput?.link;
+            const existingPromptLink = promptNode.inputs.prompt;
+            const hasPromptConnection = promptLinkId != null || Array.isArray(existingPromptLink);
+            if (!hasPromptConnection) {
+                promptNode.inputs.prompt = buildRuntimePrompt(node, runtimeLinks);
+            } else if (promptLinkId != null && (!Array.isArray(existingPromptLink) || existingPromptLink.length < 2)) {
+                // ComfyUI normally preserves connected widget inputs in graphToPrompt.
+                // Reconstruct the link as a fallback for frontends that omit it after
+                // the custom DOM editor replaces the native prompt widget.
+                const promptLink = getNativeGraphLink(node.graph || app.graph, promptLinkId);
+                const originId = promptLink?.origin_id ?? promptLink?.originId;
+                const originSlot = promptLink?.origin_slot ?? promptLink?.originSlot ?? 0;
+                if (originId != null) promptNode.inputs.prompt = [String(originId), Number(originSlot) || 0];
+            }
             const localInputs = {
-                prompt: buildRuntimePrompt(node, runtimeLinks),
                 mode: canonicalOption("mode", getWidgetValue(node, "mode", MODE_IMAGE)),
                 resolution: canonicalOption("resolution", getWidgetValue(node, "resolution", "480P")),
                 aspect_ratio: canonicalOption("aspect_ratio", getWidgetValue(node, "aspect_ratio", "16:9")),
@@ -1370,6 +1517,7 @@ function patchGraphToPrompt() {
                 height: Number(getWidgetValue(node, "height", 768)),
                 seconds: Math.min(MAX_SECONDS, Math.max(MIN_SECONDS, Number(getWidgetValue(node, "seconds", 5)) || 5)),
                 advanced: asBoolean(getWidgetValue(node, "advanced", false)),
+                prompt_optimizer_scene_guide: canonicalPromptGuide(getWidgetValue(node, "prompt_optimizer_scene_guide", "none")),
                 fps: Number(getWidgetValue(node, "fps", 24)),
                 keyframe_role: canonicalOption("keyframe_role", getWidgetValue(node, "keyframe_role", KEYFRAME_FIRST)),
                 ref_image_size: canonicalOption("ref_image_size", getWidgetValue(node, "ref_image_size", REF_IMAGE_1K)),
@@ -1378,6 +1526,7 @@ function patchGraphToPrompt() {
             for (const [name, value] of Object.entries(localInputs)) {
                 setLocalInputUnlessConnected(node, promptNode, name, value);
             }
+            promptNode.inputs.prompt_optimizer_settings = false;
         }
         return promptData;
     };
@@ -1596,12 +1745,14 @@ function refreshMentionPreviews() {
 function updateMentionChip(chip, option) {
     if (!chip || !option) return;
     const nextToken = option.token || option.tag || chip.dataset.token || "";
+    const nextTag = option.tag || chip.dataset.tag || nextToken;
     const nextLabel = option.label || chip.dataset.label || nextToken;
     const nextFullLabel = option.fullLabel || nextLabel;
     const nextPreviewUrl = option.previewUrl || "";
     chip.classList.toggle("is-pending", Boolean(option.pending));
     chip.classList.toggle("is-unresolved", Boolean(option.unresolved) && !option.pending);
     chip.dataset.token = nextToken;
+    chip.dataset.tag = nextTag;
     chip.dataset.label = nextLabel;
     chip.dataset.fullLabel = nextFullLabel;
     chip.dataset.mediaType = option.type || chip.dataset.mediaType || "image";
@@ -1868,6 +2019,7 @@ function makeMentionChip(option) {
     chip.className = `h3-mention-chip${option.pending ? " is-pending" : option.unresolved ? " is-unresolved" : ""}`;
     chip.contentEditable = "false";
     chip.dataset.token = option.token || option.tag || "";
+    chip.dataset.tag = option.tag || option.token || "";
     chip.dataset.label = option.label || "";
     chip.dataset.fullLabel = option.fullLabel || option.label || "";
     chip.dataset.mediaType = option.type || "image";
@@ -1944,7 +2096,144 @@ function appendPromptTextWithDialogueBlocks(container, value) {
     appendTextWithBreaks(container, source.slice(cursor));
 }
 
+function promptViewMode(node) {
+    return String(node?.properties?.[PROMPT_VIEW_PROP] || PROMPT_VIEW_STRUCTURED) === PROMPT_VIEW_RAW
+        ? PROMPT_VIEW_RAW
+        : PROMPT_VIEW_STRUCTURED;
+}
+
+function isRawPromptMode(node) {
+    return promptViewMode(node) === PROMPT_VIEW_RAW;
+}
+
+function setPromptViewMode(node, mode) {
+    if (!node) return;
+    node.properties ||= {};
+    node.properties[PROMPT_VIEW_PROP] = mode === PROMPT_VIEW_RAW ? PROMPT_VIEW_RAW : PROMPT_VIEW_STRUCTURED;
+}
+
+function promptMentionTag(type, ordinal) {
+    const mediaType = String(type || "image").toLowerCase();
+    const index = Number(ordinal);
+    if (!Number.isFinite(index) || index <= 0) return "";
+    if (mediaType === "image") return "<Picture " + index + ">";
+    if (mediaType === "video") return "<Video " + index + ">";
+    if (mediaType === "audio") return "<Audio " + index + ">";
+    return "";
+}
+
+function promptTextFromPart(part) {
+    if (part?.type === "dialogue") return "<d>" + String(part.text || "") + "</d>";
+    if (part?.type !== "mention") return String(part?.text || "");
+    return String(part.tag || part.token || promptMentionTag(part.mediaType, part.ordinal) || "");
+}
+
+function promptDocTextFromParts(parts) {
+    return (Array.isArray(parts) ? parts : []).map((part) => promptTextFromPart(part)).join("");
+}
+
+function promptPartsFromText(node, value) {
+    const text = String(value || "");
+    const parts = [];
+    const pushText = (chunk) => {
+        const next = String(chunk || "");
+        if (!next) return;
+        if (parts.at(-1)?.type === "text") parts[parts.length - 1].text += next;
+        else parts.push({ type: "text", text: next });
+    };
+    let plainStart = 0;
+    let cursor = 0;
+    const candidates = pastedMentionCandidates(node);
+    while (cursor < text.length) {
+        const dialogueMatch = text.slice(cursor).match(/^<d>([\s\S]*?)<\/d>/i);
+        const match = dialogueMatch ? {
+            raw: dialogueMatch[0],
+            kind: "dialogue",
+            text: dialogueMatch[1] || "",
+        } : pastedOfficialMediaTagMatch(node, text, cursor)
+            || candidates.find((candidate) => text.slice(cursor, cursor + candidate.raw.length).toLocaleLowerCase() === candidate.raw.toLocaleLowerCase());
+        if (!match) {
+            cursor += 1;
+            continue;
+        }
+        if (plainStart < cursor) pushText(text.slice(plainStart, cursor));
+        if (match.kind === "dialogue") {
+            parts.push({ type: "dialogue", text: match.text });
+            cursor += match.raw.length;
+            plainStart = cursor;
+            continue;
+        }
+        const option = match.option || {};
+        parts.push({
+            type: "mention",
+            token: match.raw || option.token || "",
+            tag: option.tag || match.raw || option.token || "",
+            label: option.label || "",
+            fullLabel: option.fullLabel || option.label || "",
+            mediaType: option.type || "image",
+            referenceMode: option.referenceMode || referenceMentionMode(node),
+            ordinal: Number(option.ordinal) || null,
+            sourceId: option.sourceId != null ? Number(option.sourceId) : null,
+            sourceSlot: Number(option.sourceSlot) || 0,
+            previewUrl: option.previewUrl || "",
+            unresolved: Boolean(option.unresolved),
+            pending: Boolean(option.pending),
+        });
+        cursor += match.raw.length;
+        plainStart = cursor;
+    }
+    if (plainStart < text.length) pushText(text.slice(plainStart));
+    return parts;
+}
+
+function serializeRawPromptDoc(node, editor) {
+    let text = "";
+    const parts = [];
+    const pushText = (value) => {
+        const next = String(value || "").replaceAll(CARET_SENTINEL, "");
+        if (!next) return;
+        text += next;
+    };
+    const visit = (item) => {
+        if (item.nodeType === Node.TEXT_NODE) {
+            pushText(item.textContent);
+            return;
+        }
+        if (item.nodeType !== Node.ELEMENT_NODE) return;
+        if (isDialogueBlock(item)) {
+            const dialogue = dialogueBlockText(item);
+            text += `<d>${dialogue}</d>`;
+            return;
+        }
+        if (isMentionChip(item)) {
+            text += String(item.dataset.tag || item.dataset.token || "");
+            return;
+        }
+        if (item.tagName === "BR") {
+            text += "\n";
+            return;
+        }
+        for (const child of item.childNodes || []) visit(child);
+    };
+    for (const child of editor.childNodes || []) visit(child);
+    return {
+        version: 1,
+        text,
+        parts: promptPartsFromText(node, text),
+    };
+}
+
+function appendRawPromptText(container, value) {
+    appendTextWithBreaks(container, String(value || ""));
+}
+
 function serializeEditorDoc(editor) {
+    const node = editorPromptNode(editor);
+    if (isRawPromptMode(node)) {
+        const current = node?.properties?.[PROMPT_DOC_PROP];
+        if (!node?.__h3RawPromptNeedsSync && current) return clonePromptDoc(current);
+        return serializeRawPromptDoc(node, editor);
+    }
     const parts = [];
     const pushText = (text) => {
         const value = String(text || "").replaceAll("\u200B", "");
@@ -1967,6 +2256,7 @@ function serializeEditorDoc(editor) {
             parts.push({
                 type: "mention",
                 token: item.dataset.token || "",
+                tag: item.dataset.tag || item.dataset.token || "",
                 label: item.dataset.label || "",
                 fullLabel: item.dataset.fullLabel || item.dataset.label || "",
                 mediaType: item.dataset.mediaType || "image",
@@ -1989,11 +2279,7 @@ function serializeEditorDoc(editor) {
     for (const child of editor.childNodes || []) visit(child);
     return {
         version: 1,
-        text: parts.map((part) => {
-            if (part.type === "mention") return part.token;
-            if (part.type === "dialogue") return `<d>${part.text || ""}</d>`;
-            return part.text;
-        }).join(""),
+        text: promptDocTextFromParts(parts),
         parts,
     };
 }
@@ -2011,6 +2297,14 @@ function renderEditorFromNode(node, force = false) {
     if (!editor || !widget || (document.activeElement === editor && !force)) return;
     const doc = node.properties?.[PROMPT_DOC_PROP];
     editor.textContent = "";
+    const raw = isRawPromptMode(node);
+    editor.classList.toggle("is-raw", raw);
+    node.__h3EditorWrap?.classList?.toggle("is-raw", raw);
+    if (raw) {
+        closeMentionMenu(node);
+        appendRawPromptText(editor, Array.isArray(doc?.parts) ? promptDocTextFromParts(doc.parts) : String(doc?.text ?? widget.value ?? ""));
+        return;
+    }
     if (!Array.isArray(doc?.parts)) {
         appendPromptTextWithDialogueBlocks(editor, String(widget.value || ""));
         return;
@@ -2037,7 +2331,7 @@ function renderEditorFromNode(node, force = false) {
         editor.append(makeMentionChip({
             type: part.mediaType || option?.type || "image",
             token: option?.token || part.token || option?.tag || "",
-            tag: option?.tag || part.token || "",
+            tag: option?.tag || part.tag || part.token || "",
             label: option?.label || part.label || part.token || "",
             fullLabel: option?.fullLabel || part.fullLabel || part.label || part.token || "",
             referenceMode: currentMode,
@@ -2062,6 +2356,7 @@ function syncPromptFromEditor(node, markDirty = true) {
         if (widget._state) widget._state.value = doc.text;
         node.properties ||= {};
         node.properties[PROMPT_DOC_PROP] = doc;
+        if (isRawPromptMode(node)) node.__h3RawPromptNeedsSync = false;
         if (markDirty) {
             node.setDirtyCanvas?.(true, true);
             app.graph?.setDirtyCanvas?.(true, true);
@@ -2817,6 +3112,34 @@ function adjustNodeHeight(node, delta) {
     app.graph?.setDirtyCanvas?.(true, true);
 }
 
+function setNodeSizeExact(node, size) {
+    if (!node || !Array.isArray(size) || size.length < 2) return false;
+    const width = Number(size[0]);
+    const height = Number(size[1]);
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return false;
+    const nextSize = [width, height];
+    node.setSize?.(nextSize);
+    if (Array.isArray(node.size)) {
+        node.size[0] = width;
+        node.size[1] = height;
+    } else {
+        node.size = nextSize;
+    }
+    node._widgetSlotsDirty = true;
+    node.setDirtyCanvas?.(true, true);
+    node.graph?.setDirtyCanvas?.(true, true);
+    app.graph?.setDirtyCanvas?.(true, true);
+    return true;
+}
+
+function restorePromptEditorStableSize(node) {
+    const stableSize = Array.isArray(node?.__h3EditorStableSize) ? [...node.__h3EditorStableSize] : null;
+    if (!stableSize || stableSize.length < 2) return false;
+    const restored = setNodeSizeExact(node, stableSize);
+    if (restored) node.__h3EditorStableSize = null;
+    return restored;
+}
+
 function hideConditionalWidget(widget) {
     if (!widget) return false;
     let compactSize = false;
@@ -2891,26 +3214,44 @@ function showConditionalWidget(widget) {
     return wasHidden;
 }
 
-function setConditionalWidgetVisible(node, widget, visible) {
+function setConditionalWidgetVisible(node, widget, visible, { adjustHeight = true } = {}) {
+    if (!widget) return false;
+    node.__h3ConditionalVisibility ||= new Map();
+    const key = String(widget.name || widget.label || node.widgets?.indexOf(widget) || "widget");
+    const previousTarget = node.__h3ConditionalVisibility.get(key);
     const rowHeight = getConditionalWidgetHeight(node, widget);
+    // A hidden ComfyUI widget still contributes -4 px through computeSize().
+    // Showing a row therefore needs rowHeight + 4 px, not just rowHeight;
+    // otherwise the flexible prompt editor is compressed a little for every
+    // expanded setting row instead of the node extending downward.
+    const layoutDelta = rowHeight + 4;
     const changed = visible ? showConditionalWidget(widget) : hideConditionalWidget(widget);
+    node.__h3ConditionalVisibility.set(key, Boolean(visible));
     if (!changed) return false;
-    adjustNodeHeight(node, visible ? rowHeight : -rowHeight);
+    // Change height only when the desired state actually changed. ComfyUI may
+    // reconstruct widget visibility while switching workflow tabs; that is a
+    // visual reset, not a user-requested row insertion/removal, and must not
+    // grow the node again.
+    if (adjustHeight && (previousTarget === undefined || previousTarget !== Boolean(visible))) {
+        adjustNodeHeight(node, visible ? layoutDelta : -layoutDelta);
+    }
     refreshVueNodeWidgets(node);
     node._widgetSlotsDirty = true;
     return true;
 }
 
-function syncModeWidgets(node) {
+function syncModeWidgets(node, { adjustHeight = true } = {}) {
     const advanced = isAdvancedEnabled(node);
     const changed = [
-        setConditionalWidgetVisible(node, getWidget(node, "fps"), advanced),
-        setConditionalWidgetVisible(node, getWidget(node, "keyframe_role"), advanced && !isReferenceMode(node)),
-        setConditionalWidgetVisible(node, getWidget(node, "ref_image_size"), advanced),
-        setConditionalWidgetVisible(node, getWidget(node, "reference_mention_mode"), advanced && isReferenceMode(node)),
-        setConditionalWidgetVisible(node, getWidget(node, "aspect_ratio"), !isCustomResolution(node)),
-        setConditionalWidgetVisible(node, getWidget(node, "width"), isCustomResolution(node)),
-        setConditionalWidgetVisible(node, getWidget(node, "height"), isCustomResolution(node)),
+        setConditionalWidgetVisible(node, getWidget(node, "fps"), advanced, { adjustHeight }),
+        setConditionalWidgetVisible(node, getWidget(node, "keyframe_role"), advanced && !isReferenceMode(node), { adjustHeight }),
+        setConditionalWidgetVisible(node, getWidget(node, "ref_image_size"), advanced, { adjustHeight }),
+        setConditionalWidgetVisible(node, getWidget(node, "reference_mention_mode"), advanced && isReferenceMode(node), { adjustHeight }),
+        setConditionalWidgetVisible(node, getWidget(node, "aspect_ratio"), !isCustomResolution(node), { adjustHeight }),
+        setConditionalWidgetVisible(node, getWidget(node, "width"), isCustomResolution(node), { adjustHeight }),
+        setConditionalWidgetVisible(node, getWidget(node, "height"), isCustomResolution(node), { adjustHeight }),
+        setConditionalWidgetVisible(node, getWidget(node, "prompt_optimizer_settings"), advanced, { adjustHeight }),
+        setConditionalWidgetVisible(node, getWidget(node, "prompt_optimizer_scene_guide"), advanced, { adjustHeight }),
     ].some(Boolean);
     if (changed) {
         refreshVueNodeWidgets(node);
@@ -2933,22 +3274,613 @@ function repairNodeLayout(node) {
     else setTimeout(run, 0);
 }
 
+function syncPromptViewButton(node) {
+    const button = node?.__h3PromptViewButton;
+    if (!button) return;
+    const raw = isRawPromptMode(node);
+    const label = raw ? TEXT.showStructuredPrompt : TEXT.showRawPrompt;
+    button.textContent = raw ? "@" : "</>";
+    button.title = label;
+    button.setAttribute("aria-label", label);
+    button.setAttribute("aria-pressed", raw ? "true" : "false");
+    // The icon already communicates the current view. Keep the button's
+    // visual treatment identical in both modes instead of adding a colored
+    // active border in raw-prompt mode.
+    button.classList.remove("is-active");
+}
+
+function togglePromptView(node) {
+    const editor = node?.__h3Editor;
+    if (!editor) return;
+    const raw = isRawPromptMode(node);
+    if (!raw) syncPromptFromEditor(node, false);
+    else if (node.__h3RawPromptNeedsSync) syncPromptFromEditor(node, false);
+    setPromptViewMode(node, raw ? PROMPT_VIEW_STRUCTURED : PROMPT_VIEW_RAW);
+    node.__h3RawPromptNeedsSync = false;
+    renderEditorFromNode(node, true);
+    syncEditorMode(node);
+    editor.focus({ preventScroll: true });
+    setEditorCaretAtEnd(editor);
+    node.setDirtyCanvas?.(true, true);
+    app.graph?.setDirtyCanvas?.(true, true);
+}
+
+function normalizePromptOptimizerSettings(value) {
+    const source = value && typeof value === "object" ? value : {};
+    const requestedFormat = String(source.api_format || "openai").toLowerCase();
+    const apiFormat = ["openai", "responses", "gemini"].includes(requestedFormat) ? requestedFormat : "openai";
+    return {
+        api_format: apiFormat,
+        api_url: String(source.api_url || "").trim(),
+        api_key: String(source.api_key || ""),
+        model: String(source.model || "").trim(),
+        read_media: asBoolean(source.read_media, false),
+    };
+}
+
+function promptOptimizerNodes() {
+    return (app.graph?._nodes || []).filter((node) => isTarget(node));
+}
+
+function syncPromptOptimizerNodes() {
+    for (const node of promptOptimizerNodes()) syncPromptOptimizerButton(node);
+}
+
+async function loadPromptOptimizerSettings({ force = false } = {}) {
+    if (promptOptimizerSettingsPromise && !force) return promptOptimizerSettingsPromise;
+    if (promptOptimizerSettingsLoaded && !force) return promptOptimizerSettingsCache;
+    promptOptimizerSettingsPromise = (async () => {
+        const response = await api.fetchApi(PROMPT_OPTIMIZER_SETTINGS_ENDPOINT);
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data?.ok) throw new Error(data?.error || `HTTP ${response.status}`);
+        promptOptimizerSettingsCache = normalizePromptOptimizerSettings(data.settings);
+        promptOptimizerSettingsLoaded = true;
+        syncPromptOptimizerNodes();
+        return promptOptimizerSettingsCache;
+    })().finally(() => {
+        promptOptimizerSettingsPromise = null;
+    });
+    return promptOptimizerSettingsPromise;
+}
+
+async function savePromptOptimizerSettings(value) {
+    const settings = normalizePromptOptimizerSettings(value);
+    const response = await api.fetchApi(PROMPT_OPTIMIZER_SETTINGS_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(settings),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data?.ok) throw new Error(data?.error || `HTTP ${response.status}`);
+    promptOptimizerSettingsCache = normalizePromptOptimizerSettings(data.settings || settings);
+    promptOptimizerSettingsLoaded = true;
+    syncPromptOptimizerNodes();
+    return promptOptimizerSettingsCache;
+}
+
+function resetPromptOptimizerSettingsToggle(node) {
+    const widget = getWidget(node, "prompt_optimizer_settings");
+    if (!widget) return;
+    widget.value = false;
+    if (widget._state) widget._state.value = false;
+    node.setDirtyCanvas?.(true, true);
+}
+
+function makePromptOptimizerSettingsRow(labelText, control) {
+    const row = document.createElement("div");
+    row.className = "h3-optimizer-settings-row";
+    const label = document.createElement("span");
+    label.className = "h3-optimizer-settings-label";
+    label.textContent = labelText;
+    control.setAttribute?.("aria-label", labelText);
+    row.append(label, control);
+    return row;
+}
+
+function makePromptOptimizerSelect(initialValue) {
+    const root = document.createElement("div");
+    root.className = "h3-optimizer-settings-select-wrap";
+    const trigger = document.createElement("button");
+    trigger.type = "button";
+    trigger.className = "h3-optimizer-settings-control h3-optimizer-settings-select";
+    trigger.setAttribute("aria-haspopup", "listbox");
+    trigger.setAttribute("aria-expanded", "false");
+    const valueLabel = document.createElement("span");
+    valueLabel.className = "h3-optimizer-settings-select-value";
+    const chevron = document.createElement("span");
+    chevron.className = "h3-optimizer-settings-select-chevron";
+    const menu = document.createElement("div");
+    menu.className = "h3-optimizer-settings-select-menu";
+    menu.setAttribute("role", "listbox");
+    menu.hidden = true;
+    const options = Object.entries(OPTION_DEFS.prompt_optimizer_api_format).map(([value, label]) => ({ value, label }));
+    trigger.value = options.some((item) => item.value === initialValue) ? initialValue : options[0]?.value || "openai";
+    let activeIndex = Math.max(0, options.findIndex((item) => item.value === trigger.value));
+
+    const close = () => {
+        menu.hidden = true;
+        trigger.setAttribute("aria-expanded", "false");
+        trigger.classList.remove("is-open");
+    };
+    const render = () => {
+        const current = options.find((item) => item.value === trigger.value) || options[0];
+        valueLabel.textContent = current?.label || "";
+        for (const option of menu.querySelectorAll(".h3-optimizer-settings-select-option")) {
+            const selected = option.dataset.value === trigger.value;
+            option.classList.toggle("is-selected", selected);
+            option.setAttribute("aria-selected", selected ? "true" : "false");
+        }
+    };
+    const choose = (value) => {
+        const nextIndex = options.findIndex((item) => item.value === value);
+        if (nextIndex < 0) return;
+        trigger.value = value;
+        activeIndex = nextIndex;
+        render();
+        close();
+        trigger.focus();
+    };
+    options.forEach((item, index) => {
+        const option = document.createElement("button");
+        option.type = "button";
+        option.className = "h3-optimizer-settings-select-option";
+        option.dataset.value = item.value;
+        option.setAttribute("role", "option");
+        option.textContent = item.label;
+        option.addEventListener("click", () => choose(item.value));
+        option.addEventListener("pointerenter", () => { activeIndex = index; });
+        menu.append(option);
+    });
+    trigger.append(valueLabel, chevron);
+    root.append(trigger, menu);
+    trigger.addEventListener("click", () => {
+        const opening = menu.hidden;
+        if (opening) {
+            menu.hidden = false;
+            trigger.setAttribute("aria-expanded", "true");
+            trigger.classList.add("is-open");
+        } else close();
+    });
+    trigger.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+            close();
+            return;
+        }
+        if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            event.preventDefault();
+            if (menu.hidden) {
+                menu.hidden = false;
+                trigger.setAttribute("aria-expanded", "true");
+                trigger.classList.add("is-open");
+            }
+            activeIndex = (activeIndex + (event.key === "ArrowDown" ? 1 : -1) + options.length) % options.length;
+            choose(options[activeIndex].value);
+        }
+        if ((event.key === "Enter" || event.key === " ") && !menu.hidden) {
+            event.preventDefault();
+            choose(options[activeIndex].value);
+        }
+    });
+    Object.defineProperty(root, "value", {
+        configurable: true,
+        get: () => trigger.value,
+        set: (value) => {
+            if (options.some((item) => item.value === value)) {
+                trigger.value = value;
+                activeIndex = options.findIndex((item) => item.value === value);
+                render();
+            }
+        },
+    });
+    root.focus = () => trigger.focus();
+    root.__h3CloseMenu = close;
+    render();
+    return root;
+}
+
+function makePromptOptimizerSwitch(initialValue) {
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "h3-optimizer-settings-switch";
+    toggle.role = "switch";
+    toggle.checked = Boolean(initialValue);
+    const track = document.createElement("span");
+    track.className = "h3-optimizer-settings-switch-track";
+    const thumb = document.createElement("span");
+    thumb.className = "h3-optimizer-settings-switch-thumb";
+    track.append(thumb);
+    toggle.append(track);
+    const render = () => {
+        toggle.setAttribute("aria-checked", toggle.checked ? "true" : "false");
+        toggle.classList.toggle("is-on", toggle.checked);
+    };
+    toggle.addEventListener("click", () => {
+        toggle.checked = !toggle.checked;
+        render();
+    });
+    render();
+    return toggle;
+}
+
+async function openPromptOptimizerSettings(node) {
+    if (promptOptimizerSettingsModal) {
+        promptOptimizerSettingsModal.dialog?.querySelector?.("input, button")?.focus?.();
+        return;
+    }
+    try {
+        await loadPromptOptimizerSettings();
+    } catch (error) {
+        notifyPromptOptimizer(error?.message || TEXT.settingsLoadFailed);
+    }
+
+    const overlay = document.createElement("div");
+    overlay.className = "h3-optimizer-settings-overlay";
+    const dialog = document.createElement("section");
+    dialog.className = "h3-optimizer-settings-dialog";
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("aria-modal", "true");
+    dialog.setAttribute("aria-label", TEXT.optimizerSettings);
+    const header = document.createElement("div");
+    header.className = "h3-optimizer-settings-header";
+    const title = document.createElement("div");
+    title.className = "h3-optimizer-settings-title";
+    title.textContent = TEXT.optimizerSettings;
+    const closeButton = document.createElement("button");
+    closeButton.type = "button";
+    closeButton.className = "h3-optimizer-settings-close";
+    closeButton.textContent = "\u00d7";
+    closeButton.title = TEXT.settingsClose;
+    closeButton.setAttribute("aria-label", TEXT.settingsClose);
+    const headerActions = document.createElement("div");
+    headerActions.className = "h3-optimizer-settings-header-actions";
+    header.append(title, headerActions);
+
+    const form = document.createElement("form");
+    form.id = "h3-optimizer-settings-form";
+    form.className = "h3-optimizer-settings-form";
+    const apiFormat = makePromptOptimizerSelect(promptOptimizerSettingsCache.api_format);
+    const apiUrl = document.createElement("input");
+    apiUrl.className = "h3-optimizer-settings-control";
+    apiUrl.type = "text";
+    apiUrl.autocomplete = "url";
+    apiUrl.placeholder = "https://...";
+    apiUrl.value = promptOptimizerSettingsCache.api_url;
+    const apiKey = document.createElement("input");
+    apiKey.className = "h3-optimizer-settings-control";
+    apiKey.type = "password";
+    apiKey.autocomplete = "off";
+    apiKey.spellcheck = false;
+    apiKey.value = promptOptimizerSettingsCache.api_key;
+    const model = document.createElement("input");
+    model.className = "h3-optimizer-settings-control";
+    model.type = "text";
+    model.autocomplete = "off";
+    model.value = promptOptimizerSettingsCache.model;
+    const readMediaLabel = document.createElement("div");
+    readMediaLabel.className = "h3-optimizer-settings-check";
+    const readMedia = makePromptOptimizerSwitch(promptOptimizerSettingsCache.read_media);
+    readMedia.setAttribute("aria-label", TEXT.readMedia);
+    const readMediaText = document.createElement("span");
+    readMediaText.textContent = TEXT.readMedia;
+    readMediaLabel.append(readMediaText, readMedia);
+    form.append(
+        makePromptOptimizerSettingsRow(TEXT.apiFormat, apiFormat),
+        makePromptOptimizerSettingsRow(TEXT.apiUrl, apiUrl),
+        makePromptOptimizerSettingsRow(TEXT.apiKey, apiKey),
+        makePromptOptimizerSettingsRow(TEXT.apiModel, model),
+        readMediaLabel,
+    );
+
+    const error = document.createElement("div");
+    error.className = "h3-optimizer-settings-error";
+    error.hidden = true;
+    const saveButton = document.createElement("button");
+    saveButton.type = "submit";
+    saveButton.className = "h3-optimizer-settings-button is-header";
+    saveButton.setAttribute("form", form.id);
+    saveButton.textContent = TEXT.settingsSave;
+    headerActions.append(saveButton, closeButton);
+    dialog.append(header, form, error);
+    overlay.append(dialog);
+    document.body.append(overlay);
+
+    const close = () => {
+        document.removeEventListener("keydown", onKeyDown, true);
+        overlay.remove();
+        promptOptimizerSettingsModal = null;
+        resetPromptOptimizerSettingsToggle(node);
+    };
+    const onKeyDown = (event) => {
+        if (event.key === "Escape") {
+            event.preventDefault();
+            close();
+        }
+    };
+    promptOptimizerSettingsModal = { dialog, close };
+    document.addEventListener("keydown", onKeyDown, true);
+    overlay.addEventListener("pointerdown", (event) => {
+        if (!apiFormat.contains?.(event.target)) apiFormat.__h3CloseMenu?.();
+        if (event.target === overlay) close();
+    });
+    closeButton.addEventListener("click", close);
+    form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (saveButton.disabled) return;
+        saveButton.disabled = true;
+        error.hidden = true;
+        try {
+            await savePromptOptimizerSettings({
+                api_format: apiFormat.value,
+                api_url: apiUrl.value,
+                api_key: apiKey.value,
+                model: model.value,
+                read_media: readMedia.checked,
+            });
+            notifyPromptOptimizer(TEXT.settingsSaved, "success");
+            close();
+        } catch (saveError) {
+            error.textContent = String(saveError?.message || saveError || TEXT.optimizerFailed);
+            error.hidden = false;
+            saveButton.disabled = false;
+        }
+    });
+    apiFormat.focus();
+}
+
+function promptOptimizerState(node) {
+    return {
+        ...promptOptimizerSettingsCache,
+        scene_guide: canonicalPromptGuide(getWidgetValue(node, "prompt_optimizer_scene_guide", "none")),
+    };
+}
+
+function notifyPromptOptimizer(message, severity = "error") {
+    const detail = String(message || "");
+    const toast = app.extensionManager?.toast;
+    if (toast?.add) {
+        toast.add({ severity, summary: severity === "error" ? TEXT.optimizerFailed : TEXT.optimizerSettings, detail, life: 6000 });
+        return;
+    }
+    globalThis.alert?.(detail);
+}
+
+function syncPromptExternalConnectionState(node) {
+    const connected = promptInputIsConnected(node);
+    node.__h3PromptExternalConnected = connected;
+    const editor = node?.__h3Editor;
+    const wrap = node?.__h3EditorWrap;
+    if (editor) {
+        editor.contentEditable = connected ? "false" : "true";
+        editor.setAttribute("aria-readonly", connected ? "true" : "false");
+        editor.title = connected ? TEXT.promptExternalConnected : "";
+        editor.classList.toggle("is-external", connected);
+        editor.tabIndex = connected ? -1 : 0;
+        if (connected) {
+            closeMentionMenu(node);
+            if (document.activeElement === editor) editor.blur();
+        }
+    }
+    wrap?.classList?.toggle("is-external", connected);
+    syncPromptOptimizerButton(node);
+}
+
+function clearPromptOptimizerStatusTimers(node) {
+    if (!node) return;
+    if (node.__h3OptimizerStatusTimer) clearInterval(node.__h3OptimizerStatusTimer);
+    if (node.__h3OptimizerStatusHideTimer) clearTimeout(node.__h3OptimizerStatusHideTimer);
+    node.__h3OptimizerStatusTimer = null;
+    node.__h3OptimizerStatusHideTimer = null;
+}
+
+function cancelPromptOptimization(node) {
+    if (!node?.__h3OptimizerPending) return;
+    node.__h3OptimizerRequestId = null;
+    node.__h3OptimizerAbortController?.abort?.();
+    node.__h3OptimizerAbortController = null;
+    node.__h3OptimizerPending = false;
+    setPromptOptimizerStatus(node, "idle");
+    syncPromptOptimizerButton(node);
+}
+
+function setPromptOptimizerStatus(node, state = "idle") {
+    if (!node) return;
+    clearPromptOptimizerStatusTimers(node);
+    node.__h3OptimizerStatus = state;
+    const status = node.__h3PromptOptimizerStatus;
+    const label = node.__h3PromptOptimizerStatusText;
+    if (!status || !label) return;
+    const loading = state === "loading";
+    status.hidden = !loading;
+    status.className = `h3-prompt-editor-status${loading ? " is-loading" : ""}`;
+    if (!loading) {
+        label.textContent = "";
+        return;
+    }
+    const startedAt = Number(node.__h3OptimizerStartedAt) || (globalThis.performance?.now?.() || Date.now());
+    node.__h3OptimizerStartedAt = startedAt;
+    const update = () => {
+        const elapsed = Math.max(0, Math.floor(((globalThis.performance?.now?.() || Date.now()) - startedAt) / 1000));
+        label.textContent = elapsed > 1 ? `${TEXT.optimizerRunning} \u00b7 ${elapsed}s` : `${TEXT.optimizerRunning}...`;
+    };
+    update();
+    node.__h3OptimizerStatusTimer = setInterval(update, 1000);
+}
+
+function syncPromptOptimizerButton(node) {
+    const button = node?.__h3PromptOptimizeButton;
+    if (!button) return;
+    const state = promptOptimizerState(node);
+    const configured = Boolean(state.api_url.trim() && state.model.trim() && state.api_key.trim());
+    const external = promptInputIsConnected(node);
+    const pending = Boolean(node.__h3OptimizerPending);
+    const locked = external || pending;
+    button.title = external ? TEXT.promptExternalConnected : TEXT.optimizePrompt;
+    button.setAttribute("aria-label", button.title);
+    button.classList.toggle("is-configured", configured);
+    button.classList.toggle("is-loading", pending);
+    button.classList.toggle("is-external", external);
+    button.setAttribute("aria-disabled", external ? "true" : "false");
+    button.disabled = pending || external;
+    const editor = node?.__h3Editor;
+    const wrap = node?.__h3EditorWrap;
+    if (editor) {
+        editor.contentEditable = locked ? "false" : "true";
+        editor.setAttribute("aria-readonly", locked ? "true" : "false");
+        editor.setAttribute("aria-busy", pending ? "true" : "false");
+        editor.tabIndex = locked ? -1 : 0;
+        editor.title = external ? TEXT.promptExternalConnected : pending ? TEXT.optimizerRunning : "";
+        editor.classList.toggle("is-loading", pending);
+    }
+    wrap?.classList?.toggle("is-loading", pending);
+    if (pending) closeMentionMenu(node);
+}
+
+function sourceAssetDescriptor(node, mediaType) {
+    if (!node) return null;
+    const preferred = {
+        image: ["image", "filename", "file"],
+        video: ["video", "file", "filename", "video_file", "videofile"],
+        audio: ["audio", "file", "filename", "audio_file", "audiofile"],
+    }[mediaType] || ["file", "filename"];
+    const preferredSet = new Set(preferred);
+    const widgets = Array.isArray(node.widgets) ? node.widgets : [];
+    const ordered = [...widgets.filter((widget) => preferredSet.has(String(widget?.name || "").toLowerCase())), ...widgets];
+    for (const widget of ordered) {
+        const value = widget?.value;
+        const filename = typeof value === "object" ? String(value?.filename || value?.name || "") : String(value || "");
+        if (!filename || /^data:|^blob:|^https?:/i.test(filename)) continue;
+        if (!preferredSet.has(String(widget?.name || "").toLowerCase()) && !/\.(png|jpe?g|webp|gif|bmp|mp4|webm|mov|mkv|avi|m4v|mp3|wav|flac|ogg|m4a|aac)$/i.test(filename)) continue;
+        return {
+            filename,
+            subfolder: typeof value === "object" ? String(value?.subfolder || "") : "",
+            storage: typeof value === "object" ? String(value?.type || "input") : "input",
+        };
+    }
+    return null;
+}
+
+function promptOptimizerResources(node) {
+    const counts = { image: 0, video: 0, audio: 0 };
+    return normalizeLinks(node).map((link) => {
+        const type = String(link.media_type || "image").toLowerCase();
+        counts[type] = (counts[type] || 0) + 1;
+        const ordinal = counts[type];
+        const source = app.graph?.getNodeById?.(Number(link.source_id));
+        return {
+            type,
+            tag: promptMentionTag(type, ordinal),
+            name: sourceFilename(source, type) || sourceLabel(source),
+            asset: sourceAssetDescriptor(source, type),
+        };
+    });
+}
+
+function setPromptFromOptimizedText(node, value) {
+    const text = String(value || "").replace(/^```(?:text)?\s*/i, "").replace(/\s*```$/, "").trim();
+    const doc = { version: 1, text, parts: promptPartsFromText(node, text) };
+    const widget = getWidget(node, "prompt");
+    node.properties ||= {};
+    node.properties[PROMPT_DOC_PROP] = doc;
+    if (widget) {
+        widget.value = text;
+        if (widget._state) widget._state.value = text;
+    }
+    node.__h3RawPromptNeedsSync = false;
+    renderEditorFromNode(node, true);
+    syncPromptFromEditor(node, false);
+    pushPromptHistory(node);
+    node.setDirtyCanvas?.(true, true);
+    app.graph?.change?.();
+}
+
+async function optimizePromptFromEditor(node) {
+    if (!node || node.__h3OptimizerPending || promptInputIsConnected(node)) return;
+    syncPromptFromEditor(node, false);
+    pushPromptHistory(node);
+    try {
+        await loadPromptOptimizerSettings();
+    } catch (error) {
+        notifyPromptOptimizer(error?.message || TEXT.settingsLoadFailed);
+        return;
+    }
+    const state = promptOptimizerState(node);
+    if (!state.api_url.trim() || !state.model.trim() || !state.api_key.trim()) {
+        notifyPromptOptimizer(TEXT.optimizerMissing);
+        return;
+    }
+    const currentPrompt = String(getWidget(node, "prompt")?.value || "");
+    const sourcePrompt = node.__h3OptimizerLastResult === currentPrompt && node.__h3OptimizerSourcePrompt != null
+        ? node.__h3OptimizerSourcePrompt
+        : currentPrompt;
+    if (!sourcePrompt.trim()) return;
+    const resources = promptOptimizerResources(node);
+    const mediaCounts = { image: 0, video: 0, audio: 0 };
+    resources.forEach((item) => { mediaCounts[item.type] = (mediaCounts[item.type] || 0) + 1; });
+    const requestMode = canonicalOption("mode", getWidgetValue(node, "mode", MODE_IMAGE));
+    const requestId = Symbol("h3-prompt-optimizer");
+    const abortController = new AbortController();
+    node.__h3OptimizerRequestId = requestId;
+    node.__h3OptimizerAbortController = abortController;
+    node.__h3OptimizerPending = true;
+    node.__h3OptimizerStartedAt = globalThis.performance?.now?.() || Date.now();
+    setPromptOptimizerStatus(node, "loading");
+    syncPromptOptimizerButton(node);
+    try {
+        const response = await api.fetchApi("/minimax_h3_easy/prompt_optimize", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            signal: abortController.signal,
+            body: JSON.stringify({
+                prompt: sourcePrompt,
+                scene_guide: state.scene_guide,
+                mode: requestMode,
+                seconds: Math.min(MAX_SECONDS, Math.max(MIN_SECONDS, Number(getWidgetValue(node, "seconds", 5)) || 5)),
+                media_counts: mediaCounts,
+                resources,
+            }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data?.ok) throw new Error(data?.error || `HTTP ${response.status}`);
+        if (node.__h3OptimizerRequestId !== requestId) return;
+        node.__h3OptimizerSourcePrompt = sourcePrompt;
+        node.__h3OptimizerLastResult = String(data.prompt || "");
+        setPromptFromOptimizedText(node, node.__h3OptimizerLastResult);
+        setPromptOptimizerStatus(node, "success");
+    } catch (error) {
+        if (abortController.signal.aborted || node.__h3OptimizerRequestId !== requestId || error?.name === "AbortError") return;
+        setPromptOptimizerStatus(node, "error");
+        notifyPromptOptimizer(error?.message || error);
+    } finally {
+        if (node.__h3OptimizerRequestId === requestId) {
+            node.__h3OptimizerRequestId = null;
+            node.__h3OptimizerAbortController = null;
+            node.__h3OptimizerPending = false;
+            syncPromptOptimizerButton(node);
+        }
+    }
+}
+
 function syncEditorMode(node) {
-    syncModeWidgets(node);
+    syncModeWidgets(node, { adjustHeight: false });
     const widget = getWidget(node, "prompt");
     const editor = node.__h3Editor;
     const wrap = node.__h3EditorWrap;
     const domWidget = node.__h3DomWidget;
     if (!widget || !editor || !wrap || !domWidget) return;
+    syncPromptExternalConnectionState(node);
     const reference = isReferenceMode(node);
+    const raw = isRawPromptMode(node);
     hideOriginalPromptWidget(widget);
     setWidgetOption(domWidget, "canvasOnly", false);
     showDomEditorWidget(domWidget);
     editor.style.display = "block";
     wrap.style.display = "block";
-    editor.dataset.placeholder = reference ? TEXT.referencePromptPlaceholder : TEXT.promptPlaceholder;
+    editor.dataset.placeholder = raw ? TEXT.rawPromptPlaceholder : reference ? TEXT.referencePromptPlaceholder : TEXT.promptPlaceholder;
+    editor.classList.toggle("is-raw", raw);
+    wrap.classList.toggle("is-raw", raw);
+    syncPromptViewButton(node);
     applyNativeEditorTheme(wrap);
-    if (!reference) closeMentionMenu(node);
+    if (!reference || raw) closeMentionMenu(node);
 }
 
 function handleMentionMenuKeydown(node, event) {
@@ -3345,9 +4277,9 @@ function insertPlainText(editor, text) {
 function pastedMentionCandidates(node) {
     if (!isReferenceMode(node)) return [];
     const labels = {
-        image: ["图片", "Image", "image", "Picture", "picture"],
-        video: ["视频", "Video", "video"],
-        audio: ["音频", "Audio", "audio"],
+        image: ["\u56fe\u7247", "Image", "image", "Picture", "picture"],
+        video: ["\u89c6\u9891", "Video", "video"],
+        audio: ["\u97f3\u9891", "Audio", "audio"],
     };
     const candidates = [];
     const seen = new Set();
@@ -3458,6 +4390,11 @@ function ensurePromptEditor(node) {
         return;
     }
     if (typeof document === "undefined" || typeof node.addDOMWidget !== "function") return;
+    // A workflow tab can deactivate and reactivate the same node instance.
+    // `onRemoved` clears the DOM editor, but older builds left its DOM widget
+    // in `node.widgets`. Adding another one on every activation makes ComfyUI
+    // allocate the editor row repeatedly and the node grows on each tab switch.
+    removePromptEditorWidgets(node);
     ensurePromptUndoRedoShield();
     patchLiteGraphPromptProcessKey();
     const widget = getWidget(node, "prompt");
@@ -3477,7 +4414,64 @@ function ensurePromptEditor(node) {
     editor.setAttribute("aria-label", "prompt");
     editor.dataset.placeholder = isReferenceMode(node) ? TEXT.referencePromptPlaceholder : TEXT.promptPlaceholder;
     editor.spellcheck = false;
+    const editorTools = document.createElement("div");
+    editorTools.className = "h3-prompt-editor-tools";
+    const optimizerStatus = document.createElement("div");
+    optimizerStatus.className = "h3-prompt-editor-status";
+    optimizerStatus.hidden = true;
+    optimizerStatus.setAttribute("role", "status");
+    optimizerStatus.setAttribute("aria-live", "polite");
+    const optimizerStatusSpinner = document.createElement("span");
+    optimizerStatusSpinner.className = "h3-prompt-editor-status-spinner";
+    const optimizerStatusText = document.createElement("span");
+    optimizerStatusText.className = "h3-prompt-editor-status-text";
+    const optimizerCancelButton = document.createElement("button");
+    optimizerCancelButton.type = "button";
+    optimizerCancelButton.className = "h3-prompt-editor-status-cancel";
+    optimizerCancelButton.textContent = "\u25a0";
+    optimizerCancelButton.title = TEXT.optimizerCancel;
+    optimizerCancelButton.setAttribute("aria-label", TEXT.optimizerCancel);
+    optimizerCancelButton.addEventListener("pointerdown", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+    });
+    optimizerCancelButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        cancelPromptOptimization(node);
+    });
+    optimizerStatus.append(optimizerStatusSpinner, optimizerStatusText, optimizerCancelButton);
+    const viewButton = document.createElement("button");
+    viewButton.type = "button";
+    viewButton.className = "h3-prompt-editor-tool h3-prompt-editor-view-toggle";
+    viewButton.addEventListener("pointerdown", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+    });
+    viewButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        togglePromptView(node);
+    });
+    const optimizeButton = document.createElement("button");
+    optimizeButton.type = "button";
+    optimizeButton.className = "h3-prompt-editor-tool h3-prompt-editor-optimize";
+    optimizeButton.textContent = "\u2726";
+    optimizeButton.addEventListener("pointerdown", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+    });
+    optimizeButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        optimizePromptFromEditor(node);
+    });
+    editorTools.append(optimizeButton, viewButton);
     editor.addEventListener("beforeinput", (event) => {
+        if (isRawPromptMode(node)) {
+            node.__h3DialogueHashHandled = false;
+            return;
+        }
         if (node.__h3DialogueHashHandled) {
             node.__h3DialogueHashHandled = false;
             event.preventDefault();
@@ -3496,12 +4490,18 @@ function ensurePromptEditor(node) {
         if (isReferenceMode(node) && event.data === "@") setTimeout(() => syncMentionMenuToCaret(node, editor), 0);
     });
     editor.addEventListener("input", (event) => {
+        const raw = isRawPromptMode(node);
+        if (raw) node.__h3RawPromptNeedsSync = true;
         syncPromptFromEditor(node);
         if (event?.isComposing || event?.inputType === "insertCompositionText" || node.__h3PromptComposing) {
-            syncMentionMenuToCaret(node, editor);
+            if (!raw) syncMentionMenuToCaret(node, editor);
             return;
         }
         pushPromptHistory(node);
+        if (raw) {
+            closeMentionMenu(node);
+            return;
+        }
         syncMentionMenuToCaret(node, editor);
     });
     editor.addEventListener("compositionstart", () => {
@@ -3509,6 +4509,7 @@ function ensurePromptEditor(node) {
     });
     editor.addEventListener("compositionend", () => {
         node.__h3PromptComposing = false;
+        if (isRawPromptMode(node)) node.__h3RawPromptNeedsSync = true;
         syncPromptFromEditor(node);
         pushPromptHistory(node);
     });
@@ -3517,13 +4518,14 @@ function ensurePromptEditor(node) {
         applyNativeEditorTheme(wrap);
         // Focusing the editor must not open the picker by itself. It should only
         // appear when the caret is actually inside a freshly typed @ query.
-        syncMentionMenuToCaret(node, editor);
+        if (isRawPromptMode(node)) closeMentionMenu(node);
+        else syncMentionMenuToCaret(node, editor);
     });
     editor.addEventListener("pointerdown", () => {
         activePromptNode = node;
     }, true);
     editor.addEventListener("keyup", (event) => {
-        if (!isReferenceMode(node) || ["ArrowUp", "ArrowDown", "Enter", "Escape", "Tab"].includes(event.key)) return;
+        if (isRawPromptMode(node) || !isReferenceMode(node) || ["ArrowUp", "ArrowDown", "Enter", "Escape", "Tab"].includes(event.key)) return;
         syncMentionMenuToCaret(node, editor);
         event.stopPropagation();
     });
@@ -3533,12 +4535,20 @@ function ensurePromptEditor(node) {
         }
     }, true);
     editor.addEventListener("keydown", (event) => {
-        if (handleMentionMenuKeydown(node, event)) {
+        const key = String(event.key || "").toLowerCase();
+        if ((event.ctrlKey || event.metaKey) && key === "s") {
+            syncPromptFromEditor(node);
+            event.preventDefault();
+            return;
+        }
+        const raw = isRawPromptMode(node);
+        if (raw) closeMentionMenu(node);
+        if (!raw && handleMentionMenuKeydown(node, event)) {
             event.preventDefault();
             event.stopPropagation();
             return;
         }
-        if (event.key === "#" && !event.ctrlKey && !event.metaKey && !event.altKey && insertDialogueBlockAtSelection(node, editor)) {
+        if (!raw && event.key === "#" && !event.ctrlKey && !event.metaKey && !event.altKey && insertDialogueBlockAtSelection(node, editor)) {
             event.preventDefault();
             event.stopPropagation();
             node.__h3DialogueHashHandled = true;
@@ -3592,7 +4602,15 @@ function ensurePromptEditor(node) {
         event.preventDefault();
         event.stopPropagation();
         event.stopImmediatePropagation?.();
-        insertTextWithMentionChips(node, editor, event.clipboardData?.getData("text/plain") || "");
+        const text = event.clipboardData?.getData("text/plain") || "";
+        if (isRawPromptMode(node)) {
+            insertPlainText(editor, text);
+            node.__h3RawPromptNeedsSync = true;
+            syncPromptFromEditor(node);
+            pushPromptHistory(node);
+            return;
+        }
+        insertTextWithMentionChips(node, editor, text);
         syncPromptFromEditor(node);
         pushPromptHistory(node);
         syncMentionMenuToCaret(node, editor);
@@ -3646,10 +4664,17 @@ function ensurePromptEditor(node) {
     };
     editor.addEventListener("wheel", wheelHandler, { passive: false, capture: true });
     wrap.addEventListener("wheel", wheelHandler, { passive: false });
-    wrap.append(editor);
+    wrap.append(editor, optimizerStatus, editorTools);
     node.__h3Editor = editor;
     node.__h3EditorWrap = wrap;
+    node.__h3PromptEditorTools = editorTools;
+    node.__h3PromptViewButton = viewButton;
+    node.__h3PromptOptimizeButton = optimizeButton;
+    node.__h3PromptOptimizerStatus = optimizerStatus;
+    node.__h3PromptOptimizerStatusText = optimizerStatusText;
+    syncPromptExternalConnectionState(node);
     renderEditorFromNode(node);
+    syncPromptOptimizerButton(node);
     resetPromptHistory(node);
     const domWidget = node.addDOMWidget("h3_prompt_mentions", "h3_prompt_mentions", wrap, {
         getValue: () => String(getWidget(node, "prompt")?.value || ""),
@@ -3673,6 +4698,9 @@ function ensurePromptEditor(node) {
         wrap.remove();
         node.__h3Editor = null;
         node.__h3EditorWrap = null;
+        node.__h3PromptEditorTools = null;
+        node.__h3PromptViewButton = null;
+        node.__h3PromptOptimizeButton = null;
         return;
     }
     node.__h3DomWidget = domWidget;
@@ -3701,6 +4729,7 @@ function installPromptEditorSoon(node) {
         node.__h3PromptInstallPending = false;
         ensurePromptEditor(node);
         if (node.__h3Editor) {
+            if (restorePromptEditorStableSize(node)) repairNodeLayout(node);
             node.__h3PromptInstallAttempts = 0;
             node.__h3PromptInstallNextAt = 0;
             return;
@@ -3718,6 +4747,24 @@ function installPromptEditorSoon(node) {
     else setTimeout(run, 0);
 }
 
+function removePromptEditorWidgets(node) {
+    if (!Array.isArray(node?.widgets)) return false;
+    const stale = node.widgets.filter((widget) =>
+        widget === node.__h3DomWidget || String(widget?.name || "") === "h3_prompt_mentions"
+    );
+    if (!stale.length) return false;
+    for (const widget of stale) {
+        try { widget.element?.remove?.(); } catch { /* Already detached. */ }
+    }
+    const next = node.widgets.filter((widget) => !stale.includes(widget));
+    node.widgets = next;
+    if (Array.isArray(node._widgets)) node._widgets = next;
+    node.__h3DomWidget = null;
+    node._widgetSlotsDirty = true;
+    refreshVueNodeWidgets(node);
+    return true;
+}
+
 function updatePromptEditor(node) {
     if (!node.__h3Editor) {
         installPromptEditorSoon(node);
@@ -3729,12 +4776,88 @@ function updatePromptEditor(node) {
     syncEditorMode(node);
 }
 
-function pruneTransportInputs(nodeData) {
-    const optional = nodeData?.input?.optional;
-    if (!optional) return;
-    for (const name of Object.keys(optional)) {
-        if (/^media_\d+$/.test(name) || /^media_type_\d+$/.test(name)) delete optional[name];
+function isTransportInputName(name) {
+    return /^media_[0-9]+$/i.test(String(name || "")) || /^media_type_[0-9]+$/i.test(String(name || ""));
+}
+
+function removeInputSlot(node, index) {
+    const input = node?.inputs?.[index];
+    if (!input) return false;
+    if (input.link != null) {
+        try {
+            node.disconnectInput?.(index);
+        } catch {
+            // Ignore and fall through to hard removal.
+        }
+        if (input.link != null) {
+            try {
+                node.graph?.removeLink?.(input.link);
+            } catch {
+                // Ignore - the slot is going away either way.
+            }
+            input.link = null;
+        }
     }
+    if (typeof node.removeInput === "function") node.removeInput(index);
+    else node.inputs.splice(index, 1);
+    return true;
+}
+
+function pruneTransportInputs(nodeData) {
+    const sections = [nodeData?.input?.required, nodeData?.input?.optional];
+    let changed = false;
+    for (const section of sections) {
+        if (!section || typeof section !== "object") continue;
+        for (const name of Object.keys(section)) {
+            if (!isTransportInputName(name)) continue;
+            delete section[name];
+            changed = true;
+        }
+    }
+    if (Array.isArray(nodeData?.inputs)) {
+        nodeData.inputs = nodeData.inputs.filter((input) => !isTransportInputName(input?.name));
+        changed = true;
+    }
+    return changed;
+}
+
+function pruneTransportInputsFromNode(node, { requestLayout = true, force = false } = {}) {
+    if (!node || (!force && !isTarget(node))) return false;
+    let changed = false;
+    if (Array.isArray(node.inputs)) {
+        for (let index = node.inputs.length - 1; index >= 0; index -= 1) {
+            const input = node.inputs[index];
+            const name = String(input?.name || "");
+            if (!isTransportInputName(name)) continue;
+            if (/^media_\d+$/i.test(name) && input.link != null) {
+                convertNativeMediaConnection(node, index);
+            }
+            removeInputSlot(node, index);
+            changed = true;
+        }
+    }
+    if (Array.isArray(node.widgets)) {
+        const stale = node.widgets.filter((widget) => /^media_type_\d+$/i.test(String(widget?.name || "")));
+        if (stale.length) {
+            for (const widget of stale) {
+                try { widget.element?.remove?.(); } catch { /* Already detached. */ }
+            }
+            node.widgets = node.widgets.filter((widget) => !stale.includes(widget));
+            if (Array.isArray(node._widgets)) {
+                node._widgets = node._widgets.filter((widget) => !stale.includes(widget));
+            }
+            refreshVueNodeWidgets(node);
+            changed = true;
+        }
+    }
+    if (changed) {
+        node._widgetSlotsDirty = true;
+        app.graph?.change?.();
+        node.setDirtyCanvas?.(true, true);
+        app.graph?.setDirtyCanvas?.(true, true);
+        if (requestLayout) repairNodeLayout(node);
+    }
+    return changed;
 }
 
 function setConfiguredWidgetValue(node, name, value) {
@@ -3742,6 +4865,31 @@ function setConfiguredWidgetValue(node, name, value) {
     if (!widget || value === undefined) return;
     widget.value = value;
     if (widget._state) widget._state.value = value;
+}
+
+function bindPromptOptimizerWidgetCallbacks(node) {
+    const names = ["prompt_optimizer_settings", "prompt_optimizer_scene_guide"];
+    for (const name of names) {
+        const widget = getWidget(node, name);
+        if (!widget || widget.__h3PromptOptimizerCallbackBound) continue;
+        widget.__h3PromptOptimizerCallbackBound = true;
+        const original = widget.callback;
+        widget.callback = (value) => {
+            if (name === "prompt_optimizer_settings") {
+                resetPromptOptimizerSettingsToggle(node);
+                if (asBoolean(value, false)) openPromptOptimizerSettings(node);
+                node.setDirtyCanvas?.(true, true);
+                return;
+            }
+            original?.call(widget, value);
+            if (name === "prompt_optimizer_scene_guide") widget.value = ZH_BROWSER
+                ? (PROMPT_GUIDES.find((item) => item.value === canonicalPromptGuide(value))?.zh || value)
+                : (PROMPT_GUIDES.find((item) => item.value === canonicalPromptGuide(value))?.en || value);
+            syncPromptOptimizerButton(node);
+            node.setDirtyCanvas?.(true, true);
+            app.graph?.change?.();
+        };
+    }
 }
 
 function repairConfiguredWidgetValues(node, info) {
@@ -3760,10 +4908,15 @@ function repairConfiguredWidgetValues(node, info) {
         fps: 24,
         keyframe_role: KEYFRAME_FIRST,
         ref_image_size: REF_IMAGE_1K,
-                reference_mention_mode: "index",
+        reference_mention_mode: "index",
+        prompt_optimizer_settings: false,
+        prompt_optimizer_scene_guide: "none",
     };
     const names = Object.keys(defaults);
     const values = raw;
+    // Some ComfyUI workflow versions serialize an extra null placeholder
+    // after the prompt widget. Remove it before restoring the named rows so
+    // resolution, dimensions, duration, and the advanced values stay aligned.
     const resolutionAt = canonicalOption("resolution", values[2]);
     const nextResolution = canonicalOption("resolution", values[3]);
     const hasResolution = Object.prototype.hasOwnProperty.call(OPTION_DEFS.resolution, resolutionAt);
@@ -3791,6 +4944,8 @@ function repairConfiguredWidgetValues(node, info) {
             ? canonicalOption("ref_image_size", values[10]) : defaults.ref_image_size,
         reference_mention_mode: Object.prototype.hasOwnProperty.call(OPTION_DEFS.reference_mention_mode, canonicalOption("reference_mention_mode", values[11]))
             ? canonicalOption("reference_mention_mode", values[11]) : defaults.reference_mention_mode,
+        prompt_optimizer_settings: false,
+        prompt_optimizer_scene_guide: canonicalPromptGuide(values[13] || defaults.prompt_optimizer_scene_guide),
     };
     for (const name of names) setConfiguredWidgetValue(node, name, normalized[name]);
     info.widgets_values = names.map((name) => normalized[name]);
@@ -3798,16 +4953,26 @@ function repairConfiguredWidgetValues(node, info) {
 
 function installNode(nodeType, nodeData) {
     if (nodeData?.name !== NODE_CLASS) return;
+    // Strip the virtual-wire transport fields from every frontend definition
+    // before a node instance can be constructed. Execution still receives
+    // them through the prompt patch and the Python INPUT_TYPES declaration.
+    pruneTransportInputs(nodeData);
+    if (nodeType?.nodeData && nodeType.nodeData !== nodeData) pruneTransportInputs(nodeType.nodeData);
+    if (nodeType?.prototype?.constructor?.nodeData && nodeType.prototype.constructor.nodeData !== nodeData) {
+        pruneTransportInputs(nodeType.prototype.constructor.nodeData);
+    }
     if (nodeType.prototype.__h3EasyNodeInstalled) return;
     nodeType.prototype.__h3EasyNodeInstalled = true;
-    pruneTransportInputs(nodeData);
     const originalCreated = nodeType.prototype.onNodeCreated;
     nodeType.prototype.onNodeCreated = function onNodeCreatedH3Easy() {
         const result = originalCreated?.apply(this, arguments);
         this.properties ||= {};
         ensureLinks(this);
         normalizeLinks(this);
+        pruneTransportInputsFromNode(this, { force: true });
+        normalizeLinks(this);
         localizeNodeInstance(this);
+        bindPromptOptimizerWidgetCallbacks(this);
         syncModeWidgets(this);
         patchCanvas();
         installQuickCreateCapture(app.canvas);
@@ -3864,22 +5029,58 @@ function installNode(nodeType, nodeData) {
         return result;
     };
 
+    const originalAdded = nodeType.prototype.onAdded;
+    nodeType.prototype.onAdded = function onAddedH3Easy(graph) {
+        const result = originalAdded?.apply(this, arguments);
+        this.properties ||= {};
+        ensureLinks(this);
+        normalizeLinks(this);
+        pruneTransportInputsFromNode(this, { force: true });
+        normalizeLinks(this);
+        localizeNodeInstance(this);
+        bindPromptOptimizerWidgetCallbacks(this);
+        // A workflow-tab activation is a restore operation. Its serialized or
+        // previously stable size is already authoritative, so reapplying the
+        // same widget visibility must not add/subtract rows again.
+        syncModeWidgets(this, { adjustHeight: false });
+        repairNodeLayout(this);
+        return result;
+    };
+
     const originalConfigure = nodeType.prototype.onConfigure;
     nodeType.prototype.onConfigure = function onConfigureH3Easy(info) {
+        const configuredSize = Array.isArray(info?.size) && info.size.length >= 2
+            ? [Number(info.size[0]), Number(info.size[1])]
+            : null;
         const result = originalConfigure?.apply(this, arguments);
+        if (configuredSize && configuredSize.every(Number.isFinite)) {
+            // Adding/replacing the DOM prompt editor may make ComfyUI expand
+            // the node to its calculated minimum. Restore the exact workflow
+            // size after the editor is mounted instead of accumulating that
+            // minimum every time the workflow tab is activated.
+            this.__h3EditorStableSize = configuredSize;
+        }
         if (info?.properties?.[PROMPT_DOC_PROP]) {
             this.properties ||= {};
             this.properties[PROMPT_DOC_PROP] = info.properties[PROMPT_DOC_PROP];
         }
+        if (info?.properties?.[PROMPT_VIEW_PROP]) {
+            this.properties ||= {};
+            this.properties[PROMPT_VIEW_PROP] = info.properties[PROMPT_VIEW_PROP];
+        }
         repairConfiguredWidgetValues(this, info);
         normalizeLinks(this);
+        pruneTransportInputsFromNode(this, { force: true });
+        normalizeLinks(this);
         localizeNodeInstance(this);
-        syncModeWidgets(this);
+        bindPromptOptimizerWidgetCallbacks(this);
+        syncModeWidgets(this, { adjustHeight: false });
         renderEditorFromNode(this);
         resetPromptHistory(this);
         syncEditorMode(this);
         requestMentionPreviewRefresh();
         installPromptEditorSoon(this);
+        if (this.__h3Editor && restorePromptEditorStableSize(this)) repairNodeLayout(this);
         repairNodeLayout(this);
         const mediaInputIndex = getMediaInputIndex(this);
         if (mediaInputIndex >= 0 && this.inputs?.[mediaInputIndex]?.link != null) {
@@ -3893,7 +5094,11 @@ function installNode(nodeType, nodeData) {
         const result = originalConnectionsChange?.apply(this, arguments);
         const inputIndex = Number(index);
         const input = this.inputs?.[Number.isFinite(inputIndex) ? inputIndex : -1];
-        if (connected && !this.__h3VirtualWireClearing && String(input?.name || "") === "media") {
+        if (String(input?.name || "") === "prompt") {
+            syncPromptExternalConnectionState(this);
+            globalThis.requestAnimationFrame?.(() => syncPromptExternalConnectionState(this));
+        }
+        if (connected && !this.__h3VirtualWireClearing && /^media(?:_\d+)?$/i.test(String(input?.name || ""))) {
             scheduleNativeMediaConnectionConversion(this, inputIndex, linkInfo);
         }
         return result;
@@ -3907,6 +5112,10 @@ function installNode(nodeType, nodeData) {
             info.properties ||= {};
             info.properties[PROMPT_DOC_PROP] = this.properties[PROMPT_DOC_PROP];
         }
+        if (info && this.properties?.[PROMPT_VIEW_PROP]) {
+            info.properties ||= {};
+            info.properties[PROMPT_VIEW_PROP] = this.properties[PROMPT_VIEW_PROP];
+        }
         return result;
     };
 
@@ -3919,6 +5128,9 @@ function installNode(nodeType, nodeData) {
 
     const originalRemoved = nodeType.prototype.onRemoved;
     nodeType.prototype.onRemoved = function onRemovedH3Easy() {
+        if (Array.isArray(this.size) && this.size.length >= 2) this.__h3EditorStableSize = [...this.size];
+        cancelPromptOptimization(this);
+        clearPromptOptimizerStatusTimers(this);
         closeMentionMenu(this);
         if (this.__h3PromptInstallRetry) clearTimeout(this.__h3PromptInstallRetry);
         this.__h3PromptInstallRetry = null;
@@ -3928,6 +5140,12 @@ function installNode(nodeType, nodeData) {
         this.__h3EditorWrap?.remove?.();
         this.__h3Editor = null;
         this.__h3EditorWrap = null;
+        this.__h3PromptEditorTools = null;
+        this.__h3PromptViewButton = null;
+        this.__h3RawPromptNeedsSync = false;
+        this.__h3PromptOptimizerStatus = null;
+        this.__h3PromptOptimizerStatusText = null;
+        removePromptEditorWidgets(this);
         this.__h3DomWidget = null;
         return originalRemoved?.apply(this, arguments);
     };
@@ -3945,6 +5163,24 @@ function installLoaderNode(nodeType, nodeData) {
     };
     const originalConfigure = nodeType.prototype.onConfigure;
     nodeType.prototype.onConfigure = function onConfigureH3Loader(info) {
+        const result = originalConfigure?.apply(this, arguments);
+        localizeNodeInstance(this);
+        return result;
+    };
+}
+
+function installAdapterNode(nodeType, nodeData) {
+    if (nodeData?.name !== ADAPTER_CLASS) return;
+    if (nodeType.prototype.__h3EasyAdapterInstalled) return;
+    nodeType.prototype.__h3EasyAdapterInstalled = true;
+    const originalCreated = nodeType.prototype.onNodeCreated;
+    nodeType.prototype.onNodeCreated = function onNodeCreatedH3Adapter() {
+        const result = originalCreated?.apply(this, arguments);
+        localizeNodeInstance(this);
+        return result;
+    };
+    const originalConfigure = nodeType.prototype.onConfigure;
+    nodeType.prototype.onConfigure = function onConfigureH3Adapter(info) {
         const result = originalConfigure?.apply(this, arguments);
         localizeNodeInstance(this);
         return result;
@@ -3987,6 +5223,7 @@ function install() {
             closeMentionMenu(node);
         }
     }, true);
+    setTimeout(() => loadPromptOptimizerSettings().catch(() => {}), 0);
     const style = document.createElement("style");
     style.textContent = `
       .h3-prompt-editor-wrap {
@@ -3996,7 +5233,8 @@ function install() {
       .h3-prompt-editor {
         --h3-prompt-text-size: var(--h3-native-widget-text-size, var(--comfy-textarea-font-size, 12px));
         display: block; width: 100%; height: 100%; min-width: 0; min-height: 0; max-height: 100%; box-sizing: border-box;
-        padding: var(--h3-native-widget-padding, 2px); overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain;
+        padding: var(--h3-native-widget-padding, 2px);
+        padding-bottom: calc(var(--h3-native-widget-padding, 2px) + 24px); overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain;
         white-space: pre-wrap; overflow-wrap: anywhere; border: 0; border-radius: var(--h3-native-widget-radius, 0); outline: none;
         resize: none; background-color: var(--h3-native-widget-bg, var(--comfy-input-bg, #222));
         color: var(--h3-native-widget-text, var(--input-text, #ddd)); caret-color: var(--h3-native-widget-text, var(--input-text, #ddd));
@@ -4010,7 +5248,51 @@ function install() {
       .h3-prompt-editor-wrap.h3-native-vue-nodes .h3-prompt-editor:focus {
         box-shadow: 0 0 0 1px var(--h3-native-widget-focus, var(--h3-native-widget-outline, rgba(255,255,255,.18)));
       }
+      .h3-prompt-editor-wrap.is-external .h3-prompt-editor {
+        color: var(--h3-native-widget-muted, rgba(255,255,255,.42)); caret-color: transparent; cursor: not-allowed; opacity: .72;
+      }
+      .h3-prompt-editor-wrap.is-external .h3-prompt-editor:focus { box-shadow: none; }
+      .h3-prompt-editor-wrap.is-loading .h3-prompt-editor { cursor: wait; opacity: .72; }
       .h3-prompt-editor:empty::before { content: attr(data-placeholder); color: var(--h3-native-widget-muted, rgba(255,255,255,.38)); pointer-events: none; }
+      .h3-prompt-editor-status {
+        position: absolute; left: 12px; bottom: 4px; z-index: 3; display: inline-flex; align-items: center; gap: 5px; max-width: calc(100% - 92px);
+        overflow: hidden; color: var(--h3-native-widget-text, rgba(255,255,255,.78)); pointer-events: auto; user-select: none;
+        font: 600 9px/18px Consolas, "Courier New", monospace; letter-spacing: 0; white-space: nowrap; text-overflow: ellipsis;
+      }
+      .h3-prompt-editor-status[hidden] { display: none !important; }
+      .h3-prompt-editor-status-spinner {
+        display: inline-block; width: 8px; height: 8px; flex: 0 0 8px; box-sizing: border-box; border: 1px solid currentColor; border-radius: 50%; opacity: .56;
+      }
+      .h3-prompt-editor-status-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; opacity: .56; }
+      .h3-prompt-editor-status.is-loading .h3-prompt-editor-status-spinner { border-right-color: transparent; animation: h3-prompt-status-spin .72s linear infinite; }
+      .h3-prompt-editor-status-cancel {
+        appearance: none; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; flex: 0 0 16px; padding: 0;
+        border: 1px solid transparent; border-radius: 3px; outline: none; background: transparent; color: inherit; opacity: .5; cursor: pointer;
+        font: 600 7px/1 Consolas, "Courier New", monospace; letter-spacing: 0; transition: opacity .12s ease, background-color .12s ease, border-color .12s ease;
+      }
+      .h3-prompt-editor-status-cancel:hover, .h3-prompt-editor-status-cancel:focus-visible {
+        opacity: .82; background: rgba(255,255,255,.045); border-color: rgba(255,255,255,.1);
+      }
+      @keyframes h3-prompt-status-spin { to { transform: rotate(360deg); } }
+      .h3-prompt-editor-tools {
+        position: absolute; right: 14px; bottom: 4px; z-index: 3; display: flex; align-items: center; gap: 3px; pointer-events: auto;
+      }
+      .h3-prompt-editor-tool {
+        appearance: none; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 18px; padding: 0;
+        border: 1px solid transparent; border-radius: 4px; outline: none; background: transparent; box-shadow: none;
+        color: var(--h3-native-widget-text, rgba(255,255,255,.78)); opacity: .34; cursor: pointer; user-select: none;
+        font: 600 9px/1 Consolas, "Courier New", monospace; letter-spacing: -.4px; transition: opacity .12s ease, background-color .12s ease, border-color .12s ease, color .12s ease;
+      }
+      .h3-prompt-editor-tool:hover, .h3-prompt-editor-tool:focus-visible {
+        opacity: .62; background: rgba(255,255,255,.045); border-color: rgba(255,255,255,.1);
+      }
+      .h3-prompt-editor-tool.is-active {
+        opacity: .5; color: rgba(190,255,244,.88); background: rgba(0,226,187,.04); border-color: rgba(0,226,187,.12);
+      }
+      .h3-prompt-editor-tool.is-configured { opacity: .46; }
+      .h3-prompt-editor-tool.is-loading { opacity: .64; animation: h3-prompt-tool-pulse .8s ease-in-out infinite alternate; }
+      .h3-prompt-editor-tool:disabled, .h3-prompt-editor-tool.is-external { opacity: .16; cursor: not-allowed; pointer-events: none; }
+      @keyframes h3-prompt-tool-pulse { from { transform: scale(.88); } to { transform: scale(1.06); } }
       .h3-mention-chip {
         display: inline; max-width: 150px; margin: 0 1px; padding: 0; vertical-align: baseline; border: 0; border-radius: 0;
         background: transparent; color: rgba(0,226,187,.98); font-family: inherit; font-size: var(--h3-prompt-text-size, 12px);
@@ -4047,6 +5329,72 @@ function install() {
       .h3-mention-menu-thumb { display: block; width: 36px; height: 36px; object-fit: cover; border-radius: 5px; background: rgba(255,255,255,.1); }
       .h3-mention-menu-main { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 700; }
       .h3-mention-menu-detail { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; color: var(--h3-native-widget-muted, rgba(255,255,255,.55)); font-size: 11px; }
+      .h3-optimizer-settings-overlay {
+        --h3-settings-bg-base: #1c1e23; --h3-settings-bg-surface: #26282e; --h3-settings-bg-hover: #31343c; --h3-settings-text: #e3e3e3;
+        --h3-settings-muted: #a8adb8; --h3-settings-border: rgba(255,255,255,.12); --h3-settings-border-light: rgba(255,255,255,.18);
+        --h3-settings-accent: #a8c7fa; --h3-settings-accent-dark: #041e49;
+        position: fixed; inset: 0; z-index: 10090; display: flex; align-items: center; justify-content: center; padding: 16px;
+        box-sizing: border-box; background: rgba(0,0,0,.58); color: var(--h3-settings-text);
+        font-family: "Google Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+      }
+      .h3-optimizer-settings-dialog {
+        width: min(440px, calc(100vw - 32px)); max-height: calc(100vh - 32px); box-sizing: border-box; overflow: auto; border: 1px solid rgba(255,255,255,.15); border-radius: 16px;
+        background: var(--h3-settings-bg-base); color: var(--h3-settings-text); box-shadow: 0 24px 64px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.05);
+      }
+      .h3-optimizer-settings-header { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 14px 20px 12px; border-bottom: 1px solid var(--h3-settings-border); }
+      .h3-optimizer-settings-title { min-width: 0; color: var(--h3-settings-text); font-size: 17px; font-weight: 600; letter-spacing: 0; }
+      .h3-optimizer-settings-header-actions { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; }
+      .h3-optimizer-settings-close {
+        appearance: none; width: 28px; height: 28px; flex: 0 0 28px; padding: 0; border: 1px solid transparent; border-radius: 8px; background: transparent;
+        color: rgba(227,227,227,.56); cursor: pointer; font: inherit; font-size: 17px; font-weight: 500; line-height: 1; transition: background .2s, border-color .2s, color .2s;
+      }
+      .h3-optimizer-settings-close:hover, .h3-optimizer-settings-close:focus-visible { border-color: rgba(168,199,250,.32); background: rgba(168,199,250,.1); color: #dce7fa; outline: none; }
+      .h3-optimizer-settings-form { display: grid; gap: 10px; padding: 14px 20px 12px; }
+      .h3-optimizer-settings-row { display: flex; flex-direction: column; align-items: stretch; gap: 5px; min-height: 0; }
+      .h3-optimizer-settings-label { color: var(--h3-settings-muted); font-size: 13px; font-weight: 500; }
+      .h3-optimizer-settings-control {
+        width: 100%; min-width: 0; box-sizing: border-box; height: 34px; padding: 7px 12px; border: 1px solid var(--h3-settings-border); border-radius: 8px;
+        background: var(--h3-settings-bg-base); color: var(--h3-settings-text); outline: none; font: inherit; font-size: 14px; transition: border-color .2s, background .2s, box-shadow .2s;
+      }
+      .h3-optimizer-settings-control:hover { border-color: var(--h3-settings-border-light); }
+      .h3-optimizer-settings-control:focus, .h3-optimizer-settings-control.is-open { border-color: var(--h3-settings-accent); background: #1a1b1e; box-shadow: none; }
+      .h3-optimizer-settings-select-wrap { position: relative; min-width: 0; width: 100%; user-select: none; }
+      .h3-optimizer-settings-select { display: flex; align-items: center; justify-content: space-between; gap: 10px; text-align: left; cursor: pointer; }
+      .h3-optimizer-settings-select-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .h3-optimizer-settings-select-chevron { width: 8px; height: 8px; flex: 0 0 8px; margin: -4px 3px 0 0; border-right: 1.5px solid var(--h3-settings-muted); border-bottom: 1.5px solid var(--h3-settings-muted); transform: rotate(45deg); transition: transform .15s ease-out, border-color .15s ease-out; }
+      .h3-optimizer-settings-select:hover .h3-optimizer-settings-select-chevron, .h3-optimizer-settings-select.is-open .h3-optimizer-settings-select-chevron { border-color: var(--h3-settings-text); }
+      .h3-optimizer-settings-select.is-open .h3-optimizer-settings-select-chevron { transform: rotate(225deg) translate(-1px, -1px); }
+      .h3-optimizer-settings-select-menu {
+        position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 100; overflow: hidden; padding: 6px; border: 1px solid rgba(255,255,255,.08); border-radius: 12px;
+        background: rgba(38,40,46,.96); backdrop-filter: blur(12px); box-shadow: 0 12px 32px rgba(0,0,0,.6); opacity: 1; transform: translateY(0);
+      }
+      .h3-optimizer-settings-select-option {
+        display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 38px; padding: 10px 12px; border: 0; border-radius: 8px; background: transparent;
+        color: var(--h3-settings-text); cursor: pointer; font: inherit; font-size: 14px; text-align: left; transition: background .12s, color .12s;
+      }
+      .h3-optimizer-settings-select-option:hover { background: rgba(255,255,255,.06); }
+      .h3-optimizer-settings-select-option.is-selected { background: rgba(168,199,250,.1); color: var(--h3-settings-accent); font-weight: 500; }
+      .h3-optimizer-settings-select-option.is-selected::after { content: "\\2713"; margin-left: auto; color: currentColor; font-size: 14px; }
+      .h3-optimizer-settings-check { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 26px; color: var(--h3-settings-text); font-size: 13px; cursor: pointer; }
+      .h3-optimizer-settings-switch { position: relative; display: inline-block; width: 40px; height: 22px; flex: 0 0 40px; padding: 0; border: 0; background: transparent; cursor: pointer; }
+      .h3-optimizer-settings-switch-track { position: absolute; inset: 0; display: block; border: 1px solid rgba(255,255,255,.1); border-radius: 22px; background: #22252a; transition: background-color .2s, border-color .2s; }
+      .h3-optimizer-settings-switch-thumb { position: absolute; left: 3px; bottom: 3px; width: 16px; height: 16px; border-radius: 50%; background: #747a83; box-shadow: 0 1px 3px rgba(0,0,0,.32); transition: transform .2s, background-color .2s; }
+      .h3-optimizer-settings-switch.is-on .h3-optimizer-settings-switch-track { border-color: rgba(255,255,255,.17); background: #30343a; }
+      .h3-optimizer-settings-switch.is-on .h3-optimizer-settings-switch-thumb { background: #969ca5; }
+      .h3-optimizer-settings-switch.is-on .h3-optimizer-settings-switch-thumb { transform: translateX(18px); }
+      .h3-optimizer-settings-switch:focus-visible { outline: 2px solid var(--h3-settings-accent); outline-offset: 3px; border-radius: 12px; }
+      .h3-optimizer-settings-error { margin: -3px 20px 2px; color: #f28b82; font-size: 12px; line-height: 1.5; }
+      .h3-optimizer-settings-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 0 20px 14px; }
+      .h3-optimizer-settings-button {
+        appearance: none; min-width: 76px; height: 34px; padding: 0 14px; border: 1px solid rgba(255,255,255,.1); border-radius: 9px; cursor: pointer; font: inherit; font-size: 13px; font-weight: 500; transition: all .2s cubic-bezier(.2,0,0,1);
+      }
+      .h3-optimizer-settings-button.is-secondary { background: rgba(255,255,255,.05); color: var(--h3-settings-text); }
+      .h3-optimizer-settings-button.is-secondary:hover, .h3-optimizer-settings-button.is-secondary:focus-visible { background: rgba(255,255,255,.1); border-color: rgba(255,255,255,.2); color: var(--h3-settings-text); outline: none; transform: translateY(-1px); }
+      .h3-optimizer-settings-button.is-primary { border-color: rgba(255,255,255,.16); background: rgba(255,255,255,.07); color: var(--h3-settings-text); font-weight: 600; box-shadow: inset 0 1px 0 rgba(255,255,255,.06); }
+      .h3-optimizer-settings-button.is-primary:hover, .h3-optimizer-settings-button.is-primary:focus-visible { border-color: rgba(168,199,250,.5); background: rgba(168,199,250,.16); color: #dce7fa; outline: none; transform: translateY(-1px); box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 4px 12px rgba(168,199,250,.08); }
+      .h3-optimizer-settings-button.is-header { min-width: 0; width: auto; height: 28px; padding: 0 9px; border-color: transparent; border-radius: 8px; background: transparent; color: rgba(227,227,227,.56); font-size: 12px; font-weight: 500; box-shadow: none; }
+      .h3-optimizer-settings-button.is-header:hover, .h3-optimizer-settings-button.is-header:focus-visible { border-color: rgba(168,199,250,.32); background: rgba(168,199,250,.1); color: #dce7fa; outline: none; transform: none; box-shadow: none; }
+      .h3-optimizer-settings-button:disabled { cursor: wait; opacity: .52; filter: none; }
     `;
     document.head.append(style);
 }
@@ -4060,6 +5408,7 @@ app.registerExtension({
         localizeNodeDefinition(nodeData);
         installMediaSourceNode(nodeType, nodeData);
         installLoaderNode(nodeType, nodeData);
+        installAdapterNode(nodeType, nodeData);
         installOutputNode(nodeType, nodeData);
         installNode(nodeType, nodeData);
     },

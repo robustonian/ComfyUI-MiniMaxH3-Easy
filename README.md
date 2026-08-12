@@ -2,42 +2,51 @@
 
 [中文说明 / Chinese documentation](README_CN.md)
 
-`ComfyUI-MiniMaxH3-Easy` integrates MiniMax H3 text-to-video, image-to-video,
-and reference-to-video generation into one streamlined ComfyUI workflow surface.
-The interaction layer has been deliberately polished to make media input,
-reference selection, and prompt editing simple to understand and quick to use.
+`ComfyUI-MiniMaxH3-Easy` provides a compact MiniMax H3 workflow surface for
+text-to-video, image-to-video, first/last-frame generation, and full-reference
+video generation in ComfyUI.
 
-The idea is simple: keep the power of ComfyUI, while removing the repetitive
-media wiring and reference bookkeeping that normally make MiniMax H3 workflows
-hard to read and harder to learn.
+The main node keeps one multi-link `Media` port instead of exposing a fixed
+row of image, video, and audio inputs. It also includes an `@` reference
+editor, structured dialogue blocks, a literal raw-prompt view, external text
+input support, mode-aware Prompt Guides, and optional API-based prompt
+optimization.
+
+The sampler, LoRA and attention patches, decoding, video assembly, and save
+nodes remain outside the main node so the workflow continues to work with the
+rest of the ComfyUI ecosystem.
 
 ## Highlights
 
-### One `Media` input for mixed media
+### One multi-link `Media` input
 
-The main node uses one visible `Media` input for images, videos, and audio.
-Multiple links can enter the same port. Image, video, and audio order numbers
-are tracked independently, and each media type has its own wire color and
-preview style.
+Images, videos, and standalone audio clips connect to the same visible
+`Media` port. Multiple links can enter that port at once.
+
+- Images, videos, and audio are numbered independently.
+- Each media type has its own wire color and preview treatment.
+- Link order is retained when the workflow is saved and loaded.
+- Dragging left from `Media` to empty canvas opens a quick-create menu for
+  compatible media loader nodes.
+- Clicking the number on a virtual media wire opens its delete menu.
 
 <p align="center">
   <img src="images/mixed-media-input-en.png" alt="Mixed media input" width="560">
 </p>
 
-This keeps the graph compact without losing ordering information. Drag from
-`Media` to an empty area of the canvas to quickly create a compatible media
-node. Click the number in the middle of a virtual media wire to open the small
-delete menu.
-
 <p align="center">
   <img src="images/quick-create-node-en.png" alt="Quick-create media node" width="460">
 </p>
 
-### A complete `@` reference editor
+The visible single port is intentional. The frontend transports the ordered
+links through hidden execution inputs without turning the node back into a
+large set of fixed sockets.
 
-`@` is available in **Reference Video** mode. Type `@` to select a connected
-image, video, or standalone audio resource. The popup presents images first,
-videos second, and audio last, with a preview for each item.
+### `@` media references
+
+In **Reference Video** mode, type `@` to select a connected image, video, or
+standalone audio resource. The picker shows images first, videos second, and
+audio last, with available previews.
 
 <p align="center">
   <img src="images/mention-popup-en.png" alt="Reference popup" width="320">
@@ -47,68 +56,186 @@ videos second, and audio last, with a preview for each item.
   <img src="images/reference-editor-en.png" alt="Reference editor" width="720">
 </p>
 
-References use **By index** by default because it is concise and easy to scan.
-**By filename** is available when the filename itself is more meaningful.
+References can be displayed by index or filename. At execution time they are
+converted to MiniMax H3 tags such as `<Picture N>`, `<Video N>`, and
+`<Audio N>`.
 
-The chips are an editing interface only. When the workflow runs, the node
-automatically converts them into the reference format recommended by MiniMax,
-including `<Picture N>`, `<Video N>`, and `<Audio N>`. Users do not need to
-manually write or maintain those tags.
+Video soundtracks remain paired with their source video. Standalone audio is
+numbered separately. When the relationship would otherwise be ambiguous, the
+node adds the video/audio provenance to the runtime prompt.
 
-A video's synchronized soundtrack is handled together with that video. A
-standalone audio input remains an independent reference, so users only need to
-connect the media they actually want to use.
+A disconnected `@` reference remains visible instead of being silently
+deleted, and a mismatch between the number of references and connected media
+does not block workflow execution. Reconnecting or removing stale references
+is the user's responsibility.
 
-### Simple dialogue blocks
+### Dialogue blocks and raw prompt view
 
-Type `#` in the prompt editor to insert an editable dialogue block.
+Type `#` in the structured editor to create a dialogue block.
 
 <p align="center">
   <img src="images/dialogue-block-en.png" alt="Dialogue block" width="560">
 </p>
 
-- Press `Enter` to finish the block.
-- Press `Shift+Enter` to add a line break inside it.
-- Click the block at any time to edit it again.
+- `Enter` exits the dialogue block.
+- `Shift+Enter` inserts a line break inside it.
+- The block is serialized as `<d>...</d>`.
+- Dialogue and lyric language is preserved; it is not forced to Chinese.
 
-The block is automatically converted to MiniMax's recommended dialogue format
-`<d>...</d>` when the prompt is sent. The rest of the prompt stays ordinary
-prompt text, so users can describe the scene naturally without learning the
-underlying markup.
+Use the `@` / `</>` button in the lower-right corner to switch between the
+structured editor and the literal raw prompt. Raw mode displays the actual
+`<Picture N>`, `<Video N>`, `<Audio N>`, and `<d>...</d>` text without
+rendering chips or dialogue blocks.
 
-## Nodes and connections
+### Native text input behavior
+
+The prompt widget can be converted to an input and connected to a normal
+ComfyUI `STRING` node. While an external text link is connected:
+
+- the custom editor becomes read-only;
+- the linked string is used as the prompt;
+- internal editor text is not appended to it;
+- prompt optimization is disabled for that editor.
+
+`Ctrl+S` / `Cmd+S` synchronizes the editor and allows ComfyUI's normal workflow
+save shortcut to run. Native typing, Backspace, undo/redo, and canvas zoom
+behavior remain available.
+
+## Prompt optimization
+
+Click the `✦` button in the prompt editor to rewrite the current prompt with a
+configured API. During the request, the editor shows an activity indicator and
+elapsed time.
+
+The optimizer supports:
+
+- OpenAI-compatible Chat Completions APIs;
+- OpenAI Responses APIs;
+- Gemini Native `generateContent` APIs;
+- configurable API URL, API key, and model name;
+- mode-aware MiniMax H3 Prompt Guides;
+- optional reading of connected media;
+- a 600-second request timeout;
+- a requested maximum output of 50,000 tokens.
+
+The actual output limit is still controlled by the selected model and API
+provider. Providers with a lower limit may truncate the response or reject the
+requested value.
+
+### API settings popup
+
+Enable **Advanced options**, then set **Optimizer settings** to `true`. This
+temporarily opens the settings popup and automatically returns to `false` when
+the popup closes.
+
+The popup contains:
+
+- API format: OpenAI Compatible, OpenAI Responses, or Gemini Native;
+- API URL;
+- API Key;
+- model name;
+- Read connected media.
+
+These settings are stored in:
+
+```text
+ComfyUI/custom_nodes/ComfyUI-MiniMaxH3-Easy/prompt_optimizer.json
+```
+
+The file is shared by every MiniMax H3 Easy main node in that ComfyUI
+installation and is excluded by `.gitignore`. The API Key input is visually
+masked, but the JSON file itself contains the key in plain text. Do not publish
+or package that file.
+
+The selected **Prompt Guide** remains an ordinary per-node parameter and is
+saved with the workflow.
+
+### Prompt Guide selection
+
+The optimizer always loads the general H3 rules, then selects the correct mode
+guide:
+
+- I2V / First/Last Frame mode uses the base T2VA, I2VA, FL2VA, and L2VA guide.
+- Reference Video mode uses the full-reference Ref2VA guide.
+- The selected scene guide and its reference files are appended when present.
+
+Included scene guides currently cover 3D animation shorts, brand promos,
+co-op game intros, hand-drawn/live-action fusion, minimalist product ads,
+music-video subtitles, paper collage, and papercraft stop motion.
+
+### Connected media and evidence rules
+
+When **Read connected media** is enabled, locally resolvable files up to 32 MiB
+each may be attached to the optimization request:
+
+- Gemini Native can receive image, video, and audio inline parts.
+- OpenAI-compatible Chat Completions and OpenAI Responses requests currently attach images only.
+- Unsupported, missing, or oversized files are skipped.
+
+The system prompt explicitly tells the optimizer not to invent media content.
+If no file is attached, or the selected model cannot perceive the supplied
+modality, it must preserve relevant tags and reason only from the user's text
+and explicit instructions.
+
+### Re-optimization
+
+If the current editor text is exactly the previous optimizer result, clicking
+`✦` again regenerates from the original source prompt rather than repeatedly
+rewriting the generated result. Once the result is manually edited, the edited
+text becomes the next source prompt.
+
+## Nodes
 
 ### MiniMax H3 Easy Loader
 
-The all-in-one loader exposes separate choices for:
+The bundled loader selects:
 
-- FL2VA model;
-- Ref2VA model;
+- FL2VA transformer;
+- Ref2VA transformer;
 - Qwen3-VL text encoder;
 - video VAE;
 - audio VAE.
 
-Official and common community filename variants are recognized, including
-BF16, FP8, INT8, INT4, NVFP4, NF4, and GGUF releases.
+One transformer may be set to `None`. The remaining transformer then serves
+all modes. When both filenames are configured, FL2VA is preferred for text,
+image, and keyframe generation, while Ref2VA is preferred for full-reference
+generation.
 
-To use only one transformer model, set the other model selector to `None`. The
-remaining model will automatically be used for text-to-video,
-I2V/first-last-frame, and reference-video generation. When both models are
-available, the node prefers FL2VA for text-to-video and I2V/first-last-frame
-generation, and Ref2VA for reference-video generation. At least one of the two
-transformer models must be selected.
+Transformer files are loaded on demand. When the requested mode changes to a
+different transformer file, the loader releases its cached transformer and
+asks ComfyUI to empty the soft cache before loading the other one.
+
+The filename matcher recognizes common community naming and quantization
+variants, including `.safetensors` and `.gguf` releases.
+
+### MiniMax H3 Easy Model Bridge
+
+The Model Bridge assembles ordinary ComfyUI loader outputs into an H3 bundle.
+It accepts:
+
+- required `CLIP`, video `VAE`, and audio `VAE` inputs;
+- optional FL2VA `MODEL`;
+- optional Ref2VA `MODEL`;
+- one or both transformer models.
+
+This allows native, community, and GGUF loaders to be used instead of the
+bundled loader. If upstream nodes load both transformer models, both may remain
+resident according to ComfyUI's model-management behavior. Connect only one
+transformer when minimizing memory use is more important than automatic
+per-mode model selection.
 
 ### MiniMax H3 Easy
 
-This is the main generation node. It outputs:
+The main node handles prompt editing, media ordering, dimensions, duration,
+mode selection, conditioning, and latent preparation. It outputs:
 
-- `Model` — connect this to a model-only LoRA, Sage Attention patch, or directly
-  to the sampler;
-- `H3 Context` — connect this to **MiniMax H3 Easy Output**.
+- `Model`: connect to a model-only LoRA, attention patch, accelerator, or
+  sampler;
+- `H3 Context`: connect to **MiniMax H3 Easy Output**.
 
 ### MiniMax H3 Easy Output
 
-This node expands `H3 Context` into the standard workflow outputs:
+This node expands `H3 Context` into standard workflow outputs:
 
 - Conditioning;
 - Latent;
@@ -116,66 +243,92 @@ This node expands `H3 Context` into the standard workflow outputs:
 - Audio VAE;
 - FPS.
 
-The sampler, acceleration nodes, video/audio processing, and save nodes remain
-outside the main node so the workflow stays compatible with the rest of
-ComfyUI.
-
-## Modes
+## Modes and media limits
 
 ### I2V or First/Last Frame
 
-- No media connected: text-to-video.
-- One image connected: image-to-video.
-- Two images connected: first/last-frame generation.
-- Video and audio links are not accepted in this mode.
+- No media: text-to-video.
+- One image: first-frame or last-frame generation, selected in Advanced.
+- Two images: first/last-frame generation.
+- Video and audio inputs are rejected in this mode.
+- Maximum: two images.
 
 ### Reference Video
 
-- Up to nine reference images, three reference videos, and three standalone
-  audio clips.
-- The `@` editor is enabled.
-- Reference order and prompt references are kept synchronized automatically.
+- Maximum: nine images, three videos, and three standalone audio clips.
+- Maximum combined visible media links: fifteen.
+- At least one image or video is required; audio-only reference mode is not
+  accepted.
+- Image, video, and audio numbering remains independent.
 
-## Parameter design
+## Parameters
 
 ### Resolution and aspect ratio
 
-Resolution presets follow the MiniMax H3/ComfyUI megapixel-style budgets:
+Resolution presets use megapixel-style budgets:
 
 `360P`, `416P`, `480P`, `540P`, `640P`, `720P`, `768P`, `832P`, `928P`,
 `1024P`, `1080P`, and `Custom`.
 
-Presets calculate the canvas from the selected aspect ratio and align the final
-dimensions to multiples of 32. Available ratios are `1:1`, `2:3`, `3:2`, `3:4`,
-`4:3`, `9:16`, `16:9`, and `21:9`.
+Available aspect ratios are `1:1`, `2:3`, `3:2`, `3:4`, `4:3`, `9:16`,
+`16:9`, and `21:9`. Preset dimensions and custom dimensions are aligned to
+multiples of 32.
 
-Selecting `Custom` reveals width and height and hides the aspect-ratio control.
-Custom width and height must be multiples of 32.
+### Duration and FPS
 
-### Duration
+- Duration: `0.2` to `60.0` seconds in `0.1`-second steps.
+- FPS: `1` to `120`, available under Advanced options.
+- Default FPS: `24`.
 
-Duration is set in seconds from **4 to 60**. The requested duration is aligned
-to MiniMax H3's frame rules internally.
+MiniMax H3 frame length is aligned to valid `5 + 17n` frame counts. The actual
+frame count is therefore the nearest supported value rather than always being
+exactly `seconds × FPS`. Very small duration/FPS combinations still produce at
+least five frames.
 
 ### Advanced options
 
-Advanced options are off by default. When enabled, they reveal:
+Advanced options are off by default and physically collapse unused rows. They
+contain only controls relevant to the current mode:
 
-- first/last-frame setup in I2V or First/Last Frame mode;
-- reference image size in Reference Video mode;
-- `@` display mode in Reference Video mode.
+- FPS;
+- first-frame or last-frame priority;
+- reference image sizing: match generation size, 1K/1.5K/2K pixel area,
+  or original size;
+- `@` display by index or filename;
+- Optimizer settings popup switch;
+- per-node Prompt Guide.
 
-Reference images use a short-edge limit of **1K** or **2K**. Images below the
-limit keep their original resolution; larger images are resized proportionally
-instead of being forced down to the output video's resolution.
+### Reference image sizing
 
-## Installation and models
+Reference image resizing uses one uniform scale factor, so the image is not
+stretched independently along the horizontal and vertical axes. The available
+modes are:
 
-Install this directory as:
+- **Match generation size**: scales each reference image toward the current
+  video generation pixel area, following the official H3 reference pipeline.
+- **1K area**: approximately `1 MP` (`1024 x 1024` equivalent).
+- **1.5K area**: approximately `2.25 MP` (`1536 x 1536` equivalent).
+- **2K area**: approximately `4 MP` (`2048 x 2048` equivalent).
+- **Original**: sends the connected image to the reference VAE without image-
+  side resizing. This can use substantially more memory with high-resolution
+  or numerous references.
+
+The area presets resize down only. H3-aligned dimensions are selected near the
+target area while prioritizing the source aspect ratio; reference images are
+not cropped. The setting affects reference-image conditioning only and does
+not change the video's generation width, height, resolution preset, duration,
+or FPS.
+
+## Installation
+
+Install the repository as:
 
 ```text
 ComfyUI/custom_nodes/ComfyUI-MiniMaxH3-Easy
 ```
+
+Restart ComfyUI after installing or updating Python files. A browser refresh is
+normally sufficient for frontend-only changes.
 
 Place models in the standard folders:
 
@@ -187,31 +340,28 @@ ComfyUI/models/vae/
 
 For `.gguf` transformer or text-encoder files, install
 [ComfyUI-GGUF](https://github.com/city96/ComfyUI-GGUF) and restart ComfyUI.
-GGUF files are routed automatically to their GGUF loader; regular safetensors
-files continue to use native ComfyUI loading.
+Regular safetensors files continue to use native ComfyUI loaders.
+
+Example workflows are available in the [`workflow`](workflow) directory.
+
+## Notes
+
+- The node supports both the legacy ComfyUI canvas and Nodes 2.0.
+- Chinese browsers show Chinese UI labels; other browsers show English labels.
+- Workflow serialization preserves normal node parameters and editor content.
+- Model-only LoRA and attention patches belong after the main node's `Model`
+  output.
+- Prompt optimization is an optional editing tool and is not required to run
+  MiniMax H3 generation.
 
 ## License and attribution
 
-This project is released under the [MIT License](LICENSE). 
+This project is released under the [MIT License](LICENSE).
 
 If you reference, reuse, or adapt a substantial part of this project, please
 credit the original author and mention `ComfyUI-MiniMaxH3-Easy` in your project
 documentation.
 
-Please do not present the project's multi-media input design, `@` reference
+Please do not present the project's multi-link media input, `@` reference
 editor, dialogue-block conversion, or related implementation as entirely your
 own work.
-
-## Important notes
-
-- I2V or First/Last Frame mode accepts at most two images.
-- Reference Video mode accepts at most nine images, three videos, and three
-  standalone audio clips.
-- A video's synchronized audio is paired with that video automatically and does
-  not consume a separate audio slot.
-- Image, video, and audio numbering is independent.
-- The node supports both the legacy ComfyUI canvas and Nodes 2.0.
-- Chinese browsers show Chinese parameter labels; other browsers show English
-  labels.
-- Model-only LoRA and attention/acceleration patches connect after the main
-  node's `Model` output.
