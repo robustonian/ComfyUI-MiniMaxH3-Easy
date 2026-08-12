@@ -1,8 +1,8 @@
 {
   "id": "594552d6-9e64-44e3-b347-f225aa52dab3",
   "revision": 0,
-  "last_node_id": 18,
-  "last_link_id": 25,
+  "last_node_id": 25,
+  "last_link_id": 28,
   "nodes": [
     {
       "id": 13,
@@ -118,47 +118,6 @@
       "widgets_values": []
     },
     {
-      "id": 5,
-      "type": "BasicScheduler",
-      "pos": [
-        1067.5758304593196,
-        -385.5328582101905
-      ],
-      "size": [
-        224.85011204223656,
-        106
-      ],
-      "flags": {},
-      "order": 7,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "model",
-          "type": "MODEL",
-          "link": 25
-        }
-      ],
-      "outputs": [
-        {
-          "name": "SIGMAS",
-          "type": "SIGMAS",
-          "links": [
-            10
-          ]
-        }
-      ],
-      "properties": {
-        "cnr_id": "comfy-core",
-        "ver": "0.30.0",
-        "Node name for S&R": "BasicScheduler"
-      },
-      "widgets_values": [
-        "simple",
-        20,
-        1
-      ]
-    },
-    {
       "id": 6,
       "type": "RandomNoise",
       "pos": [
@@ -188,41 +147,8 @@
         "Node name for S&R": "RandomNoise"
       },
       "widgets_values": [
-        947020254985575,
+        615102808938457,
         "randomize"
-      ]
-    },
-    {
-      "id": 7,
-      "type": "KSamplerSelect",
-      "pos": [
-        1331.815929628573,
-        -519.7045632324068
-      ],
-      "size": [
-        220.60235938110372,
-        58
-      ],
-      "flags": {},
-      "order": 1,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "SAMPLER",
-          "type": "SAMPLER",
-          "links": [
-            9
-          ]
-        }
-      ],
-      "properties": {
-        "cnr_id": "comfy-core",
-        "ver": "0.30.0",
-        "Node name for S&R": "KSamplerSelect"
-      },
-      "widgets_values": [
-        "res_multistep"
       ]
     },
     {
@@ -237,7 +163,7 @@
         114
       ],
       "flags": {},
-      "order": 9,
+      "order": 10,
       "mode": 0,
       "inputs": [
         {
@@ -301,7 +227,7 @@
         60.83364061889654
       ],
       "flags": {},
-      "order": 11,
+      "order": 12,
       "mode": 0,
       "inputs": [
         {
@@ -343,7 +269,7 @@
         55.50965686645509
       ],
       "flags": {},
-      "order": 10,
+      "order": 11,
       "mode": 0,
       "inputs": [
         {
@@ -374,58 +300,77 @@
       "widgets_values": []
     },
     {
-      "id": 11,
-      "type": "CreateVideo",
+      "id": 15,
+      "type": "LoadImage",
       "pos": [
-        1831.0140950018085,
-        -412.88721252233904
+        -310.32416410574086,
+        -448.1689572292407
       ],
       "size": [
-        222.50101121826174,
-        102
+        270,
+        322
       ],
       "flags": {},
-      "order": 12,
+      "order": 1,
       "mode": 0,
-      "inputs": [
-        {
-          "name": "images",
-          "type": "IMAGE",
-          "link": 15
-        },
-        {
-          "name": "audio",
-          "shape": 7,
-          "type": "AUDIO",
-          "link": 16
-        },
-        {
-          "name": "fps",
-          "type": "FLOAT",
-          "widget": {
-            "name": "fps"
-          },
-          "link": 18
-        }
-      ],
+      "inputs": [],
       "outputs": [
         {
-          "name": "VIDEO",
-          "type": "VIDEO",
-          "links": [
-            17
-          ]
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": null
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
         }
       ],
       "properties": {
         "cnr_id": "comfy-core",
         "ver": "0.30.0",
-        "Node name for S&R": "CreateVideo"
+        "Node name for S&R": "LoadImage"
       },
       "widgets_values": [
-        24,
-        8
+        "ComfyUI_temp_anoxe_00001_.png",
+        "image"
       ]
+    },
+    {
+      "id": 18,
+      "type": "MiniMaxH3MemoryEfficientSageAttentionPatch",
+      "pos": [
+        622.4376246339244,
+        -307.17045994764186
+      ],
+      "size": [
+        320.323828125,
+        26
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 26
+        }
+      ],
+      "outputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "links": [
+            24,
+            25
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MiniMaxH3MemoryEfficientSageAttentionPatch"
+      },
+      "widgets_values": []
     },
     {
       "id": 1,
@@ -503,63 +448,241 @@
         "Node name for S&R": "MiniMaxH3EasyLoader"
       },
       "widgets_values": [
-        "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
-        "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+        "minimax_h3_fl2va_int8_convrot.safetensors",
+        "无",
         "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
         "minimax_h3_video_vae_fp16.safetensors",
         "minimax_h3_audio_vae_fp32.safetensors"
       ]
     },
     {
-      "id": 15,
-      "type": "LoadImage",
+      "id": 24,
+      "type": "LoraLoaderModelOnly",
       "pos": [
-        -213.5241751836218,
-        -200.78250510024657
+        570.6450725662371,
+        -491.9315226248658
       ],
       "size": [
-        270,
-        322
+        442.3038966064453,
+        90.7120627746582
       ],
       "flags": {},
-      "order": 3,
-      "mode": 4,
-      "inputs": [],
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 27
+        }
+      ],
       "outputs": [
         {
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": null
-        },
-        {
-          "name": "MASK",
-          "type": "MASK",
-          "links": null
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            26
+          ]
         }
       ],
       "properties": {
         "cnr_id": "comfy-core",
         "ver": "0.30.0",
-        "Node name for S&R": "LoadImage"
+        "Node name for S&R": "LoraLoaderModelOnly"
       },
       "widgets_values": [
-        "菲比经典三视图.png",
-        "image"
+        "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
+        1
+      ]
+    },
+    {
+      "id": 11,
+      "type": "CreateVideo",
+      "pos": [
+        1831.0140950018085,
+        -412.88721252233904
+      ],
+      "size": [
+        222.50101121826174,
+        102
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 15
+        },
+        {
+          "name": "audio",
+          "shape": 7,
+          "type": "AUDIO",
+          "link": 16
+        },
+        {
+          "name": "fps",
+          "type": "FLOAT",
+          "widget": {
+            "name": "fps"
+          },
+          "link": 18
+        }
+      ],
+      "outputs": [
+        {
+          "name": "VIDEO",
+          "type": "VIDEO",
+          "links": [
+            17,
+            28
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.30.0",
+        "Node name for S&R": "CreateVideo"
+      },
+      "widgets_values": [
+        24,
+        8
+      ]
+    },
+    {
+      "id": 25,
+      "type": "RAMCleanup",
+      "pos": [
+        2164.420828852858,
+        -412.8756481741815
+      ],
+      "size": [
+        270,
+        130
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "anything",
+          "shape": 7,
+          "type": "*",
+          "link": 28
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output",
+          "type": "*",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui_memory_cleanup",
+        "ver": "1.1.1",
+        "Node name for S&R": "RAMCleanup",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [
+        true,
+        true,
+        true,
+        3
+      ]
+    },
+    {
+      "id": 5,
+      "type": "BasicScheduler",
+      "pos": [
+        1067.5758304593196,
+        -385.5328582101905
+      ],
+      "size": [
+        224.85011204223656,
+        106
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 25
+        }
+      ],
+      "outputs": [
+        {
+          "name": "SIGMAS",
+          "type": "SIGMAS",
+          "links": [
+            10
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.30.0",
+        "Node name for S&R": "BasicScheduler"
+      },
+      "widgets_values": [
+        "simple",
+        8,
+        1
+      ]
+    },
+    {
+      "id": 7,
+      "type": "KSamplerSelect",
+      "pos": [
+        1331.815929628573,
+        -519.7045632324068
+      ],
+      "size": [
+        220.60235938110372,
+        58
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "SAMPLER",
+          "type": "SAMPLER",
+          "links": [
+            9
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.30.0",
+        "Node name for S&R": "KSamplerSelect"
+      },
+      "widgets_values": [
+        "euler"
       ]
     },
     {
       "id": 12,
       "type": "SaveVideo",
       "pos": [
-        569.2177626942969,
-        -192.31277985015876
+        643.7774868153882,
+        -150.71278595367426
       ],
       "size": [
-        300,
-        106
+        404,
+        825.1999999999999
       ],
       "flags": {},
-      "order": 13,
+      "order": 14,
       "mode": 0,
       "inputs": [
         {
@@ -590,12 +713,12 @@
       "id": 2,
       "type": "MiniMaxH3Easy",
       "pos": [
-        134.45405336846267,
-        -200.34665633477084
+        64.34587961801877,
+        -465.83804922084596
       ],
       "size": [
-        403.4355384927826,
-        290.6681801829715
+        387.77573756312563,
+        267.18137854132465
       ],
       "flags": {},
       "order": 4,
@@ -621,7 +744,7 @@
           "name": "model",
           "type": "MODEL",
           "links": [
-            23
+            27
           ]
         },
         {
@@ -648,65 +771,41 @@
         ],
         "minimax_h3_prompt_reference_doc": {
           "version": 1,
-          "text": "一只小猫在跳舞",
+          "text": "少女端起手中的咖啡喝了一口",
           "parts": [
             {
               "type": "text",
-              "text": "一只小猫在跳舞"
+              "text": "少女端起手中的咖啡喝了一口"
             }
           ]
+        },
+        "minimax_h3_prompt_view_mode": "structured",
+        "minimax_h3_prompt_optimizer": {
+          "enabled": true,
+          "api_format": "gemini",
+          "api_url": "https://grsai.dakka.com.cn",
+          "model": "gemini-3.5-flash",
+          "scene_guide": "none",
+          "read_media": false
         }
       },
       "widgets_values": [
-        "图生或首尾帧",
-        "一只小猫在跳舞",
+        "参考生视频",
+        "少女端起手中的咖啡喝了一口",
         null,
-        "360P",
-        "16:9",
+        "480P",
+        "9:16",
         1344,
-        768,
-        5,
+        1344,
+        3,
         false,
         24,
         "首帧优先",
-        "短边最大1K像素",
-        "按文件名"
+        "1K 面积（约1MP）",
+        "按序号",
+        false,
+        "仅通用方案"
       ]
-    },
-    {
-      "id": 18,
-      "type": "MiniMaxH3MemoryEfficientSageAttentionPatch",
-      "pos": [
-        618.5656689454477,
-        -430.1064340992534
-      ],
-      "size": [
-        320.323828125,
-        26
-      ],
-      "flags": {},
-      "order": 5,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "model",
-          "type": "MODEL",
-          "link": 23
-        }
-      ],
-      "outputs": [
-        {
-          "name": "model",
-          "type": "MODEL",
-          "links": [
-            24,
-            25
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "MiniMaxH3MemoryEfficientSageAttentionPatch"
-      }
     }
   ],
   "links": [
@@ -839,14 +938,6 @@
       "MINIMAX_H3_CONTEXT"
     ],
     [
-      23,
-      2,
-      0,
-      18,
-      0,
-      "MODEL"
-    ],
-    [
       24,
       18,
       0,
@@ -861,6 +952,30 @@
       5,
       0,
       "MODEL"
+    ],
+    [
+      26,
+      24,
+      0,
+      18,
+      0,
+      "MODEL"
+    ],
+    [
+      27,
+      2,
+      0,
+      24,
+      0,
+      "MODEL"
+    ],
+    [
+      28,
+      11,
+      0,
+      25,
+      0,
+      "VIDEO"
     ]
   ],
   "groups": [
@@ -918,10 +1033,10 @@
     "frontendVersion": "1.48.6",
     "VHS_latentpreview": false,
     "ds": {
-      "scale": 0.7513148009015781,
+      "scale": 0.620921323059155,
       "offset": [
-        368.3525720823838,
-        937.0535301075541
+        647.794042668517,
+        959.9950204242868
       ]
     },
     "VHS_latentpreviewrate": 0,
