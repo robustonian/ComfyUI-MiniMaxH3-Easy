@@ -248,10 +248,18 @@ This node expands `H3 Context` into standard workflow outputs:
 ### I2V or First/Last Frame
 
 - No media: text-to-video.
-- One image: first-frame or last-frame generation, selected in Advanced.
-- Two images: first/last-frame generation.
+- One image: image-to-video, anchored to the frame shown by its `F` (first) or
+  `L` (last) wire badge.
+- Two images: first/last-frame generation. The first image is `F` by default
+  and the second is `L`.
 - Video and audio inputs are rejected in this mode.
 - Maximum: two images.
+
+Click an `F` or `L` badge in the middle of a media wire to assign that image to
+**First Frame** or **Last Frame** directly. Assigning one of two images also
+assigns the other image to the opposite frame. Existing workflows remain
+compatible: **First connected image role** under Advanced options controls the
+same assignment.
 
 ### Reference Video
 
@@ -291,7 +299,7 @@ Advanced options are off by default and physically collapse unused rows. They
 contain only controls relevant to the current mode:
 
 - FPS;
-- first-frame or last-frame priority;
+- the role of the first connected image in I2V or First/Last Frame mode;
 - reference image sizing: match generation size, 1K/1.5K/2K pixel area,
   or original size;
 - `@` display by index or filename;

@@ -61,6 +61,8 @@ const TEXT = {
     loadImage: ZH_BROWSER ? "\u52a0\u8f7d\u56fe\u7247" : "Load image",
     loadVideo: ZH_BROWSER ? "\u52a0\u8f7d\u89c6\u9891" : "Load video",
     loadAudio: ZH_BROWSER ? "\u52a0\u8f7d\u97f3\u9891" : "Load audio",
+    firstFrame: ZH_BROWSER ? "\u9996\u5e27" : "First Frame",
+    lastFrame: ZH_BROWSER ? "\u5c3e\u5e27" : "Last Frame",
     deleteLink: ZH_BROWSER ? "\u5220\u9664" : "Delete",
     promptPlaceholder: "Prompt...",
     rawPromptPlaceholder: ZH_BROWSER ? "\u539f\u59cb\u63d0\u793a\u8bcd..." : "Raw prompt...",
@@ -107,7 +109,7 @@ const TEXT = {
     promptOptimizerSettings: ZH_BROWSER ? "\u6253\u5f00\u63d0\u793a\u8bcd\u4f18\u5316 API \u8bbe\u7f6e" : "Optimizer settings",
     promptOptimizerSceneGuide: ZH_BROWSER ? "\u63d0\u793a\u8bcd\u65b9\u6848" : "Prompt Guide",
     fps: ZH_BROWSER ? "\u5e27\u7387 (FPS)" : "Frame rate (FPS)",
-    keyframeRole: ZH_BROWSER ? "\u9996\u5c3e\u5e27\u8bbe\u7f6e" : "First/last frame setup",
+    keyframeRole: ZH_BROWSER ? "\u7b2c\u4e00\u5f20\u8fde\u63a5\u56fe\u7684\u89d2\u8272" : "First connected image role",
     refImageSize: ZH_BROWSER ? "\u53c2\u8003\u56fe\u5c3a\u5bf8" : "Reference size",
     referenceMentionMode: ZH_BROWSER ? "@\u5f15\u7528\u65b9\u5f0f" : "@ reference mode",
     mentionByFilename: ZH_BROWSER ? "\u6309\u6587\u4ef6\u540d" : "By filename",
@@ -134,8 +136,8 @@ const OPTION_DEFS = {
         [MODE_REFERENCE]: ZH_BROWSER ? "\u53c2\u8003\u751f\u89c6\u9891" : "Reference-to-video",
     },
     keyframe_role: {
-        first: ZH_BROWSER ? "\u9996\u5e27\u4f18\u5148" : "First frame priority",
-        last: ZH_BROWSER ? "\u5c3e\u5e27\u4f18\u5148" : "Last frame priority",
+        first: ZH_BROWSER ? "\u9996\u5e27" : "First Frame",
+        last: ZH_BROWSER ? "\u5c3e\u5e27" : "Last Frame",
     },
     ref_image_size: {
         [REF_IMAGE_MATCH]: ZH_BROWSER ? "\u5339\u914d\u751f\u6210\u5206\u8fa8\u7387" : "Match generation size",
@@ -472,6 +474,89 @@ function resequence(node) {
         counts[sequenceType] += 1;
         link.order = counts[sequenceType];
     });
+    syncImageFrameRoles(node);
+}
+
+function oppositeFrameRole(role) {
+    return role === "last" ? "first" : "last";
+}
+
+function validFrameRole(value) {
+    const role = canonicalOption("keyframe_role", value);
+    return role === "first" || role === "last" ? role : "";
+}
+
+function setKeyframeRoleWidget(node, role) {
+    const normalized = validFrameRole(role) || KEYFRAME_FIRST;
+    const widget = getWidget(node, "keyframe_role");
+    if (!widget) return false;
+    const displayValue = OPTION_DEFS.keyframe_role[normalized] || normalized;
+    const changed = canonicalOption("keyframe_role", widget.value) !== normalized;
+    widget.value = displayValue;
+    if (widget._state) widget._state.value = displayValue;
+    return changed;
+}
+
+function syncImageFrameRoles(node, preferredFirstRole = "") {
+    if (!node || isReferenceMode(node)) return false;
+    const images = ensureLinks(node).filter((link) => String(link.media_type || "image").toLowerCase() === "image");
+    if (!images.length) return false;
+
+    const forcedFirstRole = validFrameRole(preferredFirstRole);
+    const preferred = forcedFirstRole
+        || validFrameRole(getWidgetValue(node, "keyframe_role", KEYFRAME_FIRST))
+        || KEYFRAME_FIRST;
+    let firstRole = validFrameRole(images[0]?.frame_role);
+    let secondRole = validFrameRole(images[1]?.frame_role);
+    if (forcedFirstRole) {
+        firstRole = forcedFirstRole;
+        if (images[1]) secondRole = oppositeFrameRole(firstRole);
+    } else if (images.length === 1) {
+        firstRole ||= preferred;
+    } else if (!firstRole && !secondRole) {
+        firstRole = preferred;
+        secondRole = oppositeFrameRole(firstRole);
+    } else if (!firstRole) {
+        firstRole = oppositeFrameRole(secondRole);
+    } else {
+        secondRole = oppositeFrameRole(firstRole);
+    }
+
+    let changed = images[0].frame_role !== firstRole;
+    images[0].frame_role = firstRole;
+    if (images[1]) {
+        changed ||= images[1].frame_role !== secondRole;
+        images[1].frame_role = secondRole;
+    }
+    changed = setKeyframeRoleWidget(node, firstRole) || changed;
+    return changed;
+}
+
+function setImageFrameRole(node, linkIndex, role) {
+    if (!node || isReferenceMode(node)) return false;
+    const links = ensureLinks(node);
+    const target = links[linkIndex];
+    const desired = validFrameRole(role);
+    if (!target || String(target.media_type || "image").toLowerCase() !== "image" || !desired) return false;
+
+    target.frame_role = desired;
+    for (const link of links) {
+        if (link === target || String(link.media_type || "image").toLowerCase() !== "image") continue;
+        link.frame_role = oppositeFrameRole(desired);
+    }
+    const firstImage = links.find((link) => String(link.media_type || "image").toLowerCase() === "image");
+    setKeyframeRoleWidget(node, validFrameRole(firstImage?.frame_role) || KEYFRAME_FIRST);
+    node.setDirtyCanvas?.(true, true);
+    app.graph?.setDirtyCanvas?.(true, true);
+    app.graph?.change?.();
+    return true;
+}
+
+function linkBadgeLabel(node, link) {
+    if (!isReferenceMode(node) && String(link?.media_type || "image").toLowerCase() === "image") {
+        return validFrameRole(link?.frame_role) === "last" ? "L" : "F";
+    }
+    return String(link?.order || 1);
 }
 
 function normalizeLinks(node, removeMissing = true) {
@@ -845,10 +930,23 @@ function openLinkMenu(canvas, hit, event) {
         closeContextMenuCompat(menuInstance);
         if (linkMenu === menuInstance) linkMenu = null;
     };
+    const assignFrameRole = (role) => {
+        setImageFrameRole(hit.targetNode, hit.index, role);
+        closeContextMenuCompat(menuInstance);
+        if (linkMenu === menuInstance) linkMenu = null;
+    };
     if (globalThis.LiteGraph?.ContextMenu) {
-        menuInstance = new globalThis.LiteGraph.ContextMenu([
-            { content: TEXT.deleteLink, callback: remove },
-        ], { event: menuEvent });
+        const link = ensureLinks(hit.targetNode)[hit.index];
+        const items = [];
+        if (!isReferenceMode(hit.targetNode) && String(link?.media_type || "image").toLowerCase() === "image") {
+            const currentRole = validFrameRole(link?.frame_role) || KEYFRAME_FIRST;
+            items.push(
+                { content: `${currentRole === "first" ? "\u2713 " : ""}${TEXT.firstFrame}`, callback: () => assignFrameRole("first") },
+                { content: `${currentRole === "last" ? "\u2713 " : ""}${TEXT.lastFrame}`, callback: () => assignFrameRole("last") },
+            );
+        }
+        items.push({ content: TEXT.deleteLink, callback: remove });
+        menuInstance = new globalThis.LiteGraph.ContextMenu(items, { event: menuEvent });
         linkMenu = menuInstance;
     }
 }
@@ -1343,7 +1441,7 @@ function drawLinks(canvas, ctx) {
                 ctx.font = "bold 7px sans-serif";
                 ctx.textAlign = "center";
                 ctx.textBaseline = "middle";
-                ctx.fillText(String(link.order || 1), geometry.mid[0], geometry.mid[1] + 0.3);
+                ctx.fillText(linkBadgeLabel(targetNode, link), geometry.mid[0], geometry.mid[1] + 0.3);
             }
             ctx.restore();
         }
@@ -5011,6 +5109,18 @@ function installNode(nodeType, nodeData) {
                 syncModeWidgets(this);
                 repairNodeLayout(this);
                 this.setDirtyCanvas?.(true, true);
+            };
+        }
+        const keyframeRoleWidget = getWidget(this, "keyframe_role");
+        if (keyframeRoleWidget && !keyframeRoleWidget.__h3FrameRoleCallbackBound) {
+            keyframeRoleWidget.__h3FrameRoleCallbackBound = true;
+            const originalCallback = keyframeRoleWidget.callback;
+            keyframeRoleWidget.callback = (value) => {
+                originalCallback?.call(keyframeRoleWidget, value);
+                syncImageFrameRoles(this, value);
+                this.setDirtyCanvas?.(true, true);
+                app.graph?.setDirtyCanvas?.(true, true);
+                app.graph?.change?.();
             };
         }
         const referenceMentionWidget = getWidget(this, "reference_mention_mode");
